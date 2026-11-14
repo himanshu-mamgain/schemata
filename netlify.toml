@@ -1,0 +1,19 @@
+# Schemata on Netlify: a static PWA. Postgres runs in the browser (PGlite), so there is no backend.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# DSA Atlas and Structura read this list to link to Schemata topics.
+[[headers]]
+  for = "/topics.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
