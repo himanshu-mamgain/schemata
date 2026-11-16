@@ -3,8 +3,8 @@
  * DSA Atlas and Structura can link here: https://schemata-web.netlify.app/?topic=<id>.
  * Ids are roadmap stage ids and database ids. Keep them stable.
  */
-import { ROADMAP } from "./roadmap.ts";
-import { DATABASES } from "./databases.ts";
+import { ROADMAP } from "./roadmap";
+import { DATABASES } from "./databases";
 
 export interface Topic {
   id: string;

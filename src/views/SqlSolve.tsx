@@ -1,54 +1,19 @@
+"use client";
 import { useState } from "react";
-import { CheckCircle2, Eye, Lightbulb, Play, XCircle } from "lucide-react";
-import { questionById, QUESTIONS, type SqlQuestion, type TheoryQuestion } from "../content/questions";
-import { stageById } from "../content/roadmap";
-import { SqlEditor, CodeBlock } from "../editor/SqlEditor";
+import { CheckCircle2, Eye, Lightbulb, Network, Play, XCircle } from "lucide-react";
+import type { SqlQuestion } from "../content/questions";
+import { SqlEditor } from "../editor/SqlEditor";
+import { CodeBlock } from "../components/CodeBlock";
 import { ResultsPanel } from "../components/Results";
-import { EcoLinks } from "../components/AppSwitcher";
 import { SchemaBrowser } from "../components/SchemaBrowser";
+import { Markdown } from "../components/Markdown";
+import { SchemaDiagram } from "../erd/SchemaDiagram";
+import { tablesInSql } from "../erd/model";
 import { runAndRollback, type QueryResult } from "../db/engine";
 import { compare, type Verdict } from "../db/check";
-import { answers, markSolved, saveAnswer, solved } from "../store";
-import { href, onLinkClick } from "../router";
-import { Markdown } from "../components/Markdown";
+import { answers, markSolved, saveAnswer } from "../store";
 
-export function QuestionPage({ id }: { id: string }) {
-  const q = questionById(id);
-  if (!q) return <p>That question doesn't exist. <a href="/?page=questions" onClick={onLinkClick}>All questions</a></p>;
-  const i = QUESTIONS.indexOf(q);
-  const next = QUESTIONS[i + 1];
-  const stage = stageById(q.stage);
-  return (
-    <article className="question">
-      <p className="crumbs">
-        <a href="/?page=questions" onClick={onLinkClick}>Questions</a> ·{" "}
-        {stage && (
-          <a href={href({ name: "topic", id: stage.id })} onClick={onLinkClick}>
-            {stage.title}
-          </a>
-        )}
-      </p>
-      <h1>
-        {q.title} <span className={`level ${q.level}`}>{q.level}</span>
-      </h1>
-      <div className="tags">
-        {q.tags.map((t) => (
-          <span key={t} className="tag">{t}</span>
-        ))}
-      </div>
-      {q.kind === "sql" ? <SqlSolve key={q.id} q={q} /> : <TheoryReveal key={q.id} q={q} />}
-      <EcoLinks refs={q.related} />
-      {next && (
-        <p className="next">
-          Next: <a href={href({ name: "question", id: next.id })} onClick={onLinkClick}>{next.title}</a>
-        </p>
-      )}
-    </article>
-  );
-}
-
-function SqlSolve({ q }: { q: SqlQuestion }) {
-  const isSolved = !!solved.use()[q.id];
+export function SqlSolve({ q }: { q: SqlQuestion }) {
   const [sql, setSql] = useState(() => answers.get()[q.id] ?? "-- Write your query on the shop dataset, then Check.\n");
   const [results, setResults] = useState<QueryResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +21,7 @@ function SqlSolve({ q }: { q: SqlQuestion }) {
   const [hint, setHint] = useState(false);
   const [reveal, setReveal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [diagram, setDiagram] = useState(false);
 
   const change = (v: string) => {
     setSql(v);
@@ -97,12 +63,6 @@ function SqlSolve({ q }: { q: SqlQuestion }) {
 
   return (
     <>
-      <p className="prompt">{q.prompt}</p>
-      {isSolved && (
-        <p className="ok small">
-          <CheckCircle2 size={14} /> You've solved this one.
-        </p>
-      )}
       <div className="solve">
         <aside className="panel solve-schema">
           <h4>shop tables</h4>
@@ -119,13 +79,29 @@ function SqlSolve({ q }: { q: SqlQuestion }) {
             <button className="btn ghost" onClick={() => setHint((h) => !h)}>
               <Lightbulb size={16} /> Hint
             </button>
+            <button className={diagram ? "btn ghost is-on" : "btn ghost"} onClick={() => setDiagram((d) => !d)} aria-pressed={diagram} title="The shop's tables and how they connect">
+              <Network size={16} /> Diagram
+            </button>
             <button className="btn ghost" onClick={() => setReveal((r) => !r)}>
               <Eye size={16} /> {reveal ? "Hide solution" : "Solution"}
             </button>
             <span className="muted small grow-right">Runs in a transaction that's rolled back: the data never changes.</span>
           </div>
+          {diagram && (
+            <div className="diagram-panel">
+              {hint && <p className="small muted">The tables this question needs are highlighted.</p>}
+              <SchemaDiagram schema="shop" highlight={hint ? tablesInSql(q.solution) : undefined} height={440} />
+            </div>
+          )}
           <SqlEditor value={sql} onChange={change} onRun={runIt} height={220} />
-          {hint && <div className="hint"><Lightbulb size={14} /> <Markdown text={q.hint} /></div>}
+          {hint && (
+            <div className="hint">
+              <span className="note-label">
+                <Lightbulb size={14} aria-hidden /> Hint
+              </span>
+              <Markdown text={q.hint} />
+            </div>
+          )}
           {verdict && (
             <p className={verdict.ok ? "verdict ok" : "verdict bad"}>
               {verdict.ok ? <CheckCircle2 size={16} /> : <XCircle size={16} />} {verdict.message}
@@ -146,28 +122,3 @@ function SqlSolve({ q }: { q: SqlQuestion }) {
   );
 }
 
-function TheoryReveal({ q }: { q: TheoryQuestion }) {
-  const [shown, setShown] = useState(false);
-  return (
-    <>
-      <p className="prompt">{q.prompt}</p>
-      <p className="muted small">Answer it out loud or on paper first, the way you would in an interview.</p>
-      {shown ? (
-        <div className="reveal">
-          <h3>Model answer</h3>
-          <Markdown text={q.answer} />
-        </div>
-      ) : (
-        <button
-          className="btn primary"
-          onClick={() => {
-            setShown(true);
-            markSolved(q.id);
-          }}
-        >
-          <Eye size={16} /> Show the answer
-        </button>
-      )}
-    </>
-  );
-}

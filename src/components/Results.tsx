@@ -1,3 +1,4 @@
+"use client";
 import type { QueryResult } from "../db/engine";
 
 const MAX_ROWS = 500;

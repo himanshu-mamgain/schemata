@@ -1,3 +1,9 @@
 node_modules
 dist
+out
+.next
 .netlify
+next-env.d.ts
+# Copied from node_modules by scripts/pglite-assets.mjs
+public/pglite
+*.tsbuildinfo

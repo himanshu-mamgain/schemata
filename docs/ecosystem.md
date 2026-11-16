@@ -16,9 +16,12 @@ Source of truth here: [`src/ecosystem.ts`](../src/ecosystem.ts). DSA Atlas (`pac
 
 | Link | URL |
 | --- | --- |
-| Roadmap stage or database guide | `https://schemata-web.netlify.app/?topic=<topicId>` |
-| Interview question | `https://schemata-web.netlify.app/?q=<questionId>` |
-| SQL editor on a dataset | `https://schemata-web.netlify.app/?page=playground&dataset=<shop\|chinook\|northwind>` |
+| Roadmap stage or database guide | `https://schemata-web.netlify.app/topics/<topicId>` |
+| Interview question | `https://schemata-web.netlify.app/questions/<questionId>` |
+| SQL editor on a dataset | `https://schemata-web.netlify.app/playground?dataset=<shop\|chinook\|northwind>` |
+| Schema diagram editor | `https://schemata-web.netlify.app/erd` |
+
+The older query forms still work and redirect to these (`netlify.toml`): `/?topic=<topicId>`, `/?q=<questionId>`, `/?page=playground&dataset=<id>`. DSA Atlas builds `/?topic=…` links today; either form is fine.
 
 Topic ids are listed at `https://schemata-web.netlify.app/topics.json` (`[{ id, title, blurb }]`, served with `Access-Control-Allow-Origin: *`). Examples: `indexing`, `transactions`, `scaling`, `postgresql`, `redis`, `cassandra`.
 

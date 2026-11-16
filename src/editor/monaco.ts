@@ -5,23 +5,59 @@
  */
 import * as monaco from "monaco-esm/editor/editor.api.js";
 import "./monaco-features";
-import EditorWorker from "monaco-esm/editor/editor.worker.js?worker";
 import type { Column } from "../db/engine";
+import type { Theme } from "../theme";
 
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+self.MonacoEnvironment = { getWorker: () => new Worker(new URL("./editor.worker.ts", import.meta.url), { type: "module" }) };
 
-monaco.editor.defineTheme("schemata-dark", {
-  base: "vs-dark",
-  inherit: true,
-  rules: [],
-  colors: { "editor.background": "#0f1522", "editor.lineHighlightBackground": "#161e30", "editorGutter.background": "#0f1522" },
-});
-monaco.editor.defineTheme("schemata-light", {
-  base: "vs",
-  inherit: true,
-  rules: [],
-  colors: { "editor.background": "#f8f9fc", "editor.lineHighlightBackground": "#eef1f7", "editorGutter.background": "#f8f9fc" },
-});
+/** One editor theme per app theme. */
+const EDITOR_THEMES: Record<Theme, { base: "vs" | "vs-dark"; bg: string; line: string; rules: { token: string; foreground: string; fontStyle?: string }[] }> = {
+  paper: {
+    base: "vs",
+    bg: "#fffdf8",
+    line: "#f4efe3",
+    rules: [
+      { token: "keyword", foreground: "2f6f9f", fontStyle: "bold" },
+      { token: "string", foreground: "8a5a14" },
+      { token: "number", foreground: "2f7a55" },
+      { token: "comment", foreground: "8f8a7e", fontStyle: "italic" },
+      { token: "predefined", foreground: "8b4c9e" },
+    ],
+  },
+  blueprint: {
+    base: "vs-dark",
+    bg: "#0c2138",
+    line: "#13304f",
+    rules: [
+      { token: "keyword", foreground: "7cc4f0", fontStyle: "bold" },
+      { token: "string", foreground: "f5d491" },
+      { token: "number", foreground: "9be0b8" },
+      { token: "comment", foreground: "6f8db0", fontStyle: "italic" },
+      { token: "predefined", foreground: "d0b4ff" },
+    ],
+  },
+  chalkboard: {
+    base: "vs-dark",
+    bg: "#1a2521",
+    line: "#24332d",
+    rules: [
+      { token: "keyword", foreground: "f2d879", fontStyle: "bold" },
+      { token: "string", foreground: "f3a7b8" },
+      { token: "number", foreground: "a6e3c4" },
+      { token: "comment", foreground: "8ca196", fontStyle: "italic" },
+      { token: "predefined", foreground: "9fd3f5" },
+    ],
+  },
+};
+for (const [id, t] of Object.entries(EDITOR_THEMES)) {
+  monaco.editor.defineTheme(`schemata-${id}`, {
+    base: t.base,
+    inherit: true,
+    rules: t.rules,
+    colors: { "editor.background": t.bg, "editor.lineHighlightBackground": t.line, "editorGutter.background": t.bg },
+  });
+}
+export const editorTheme = (t: Theme) => `schemata-${t}`;
 
 const KEYWORDS = [
   "SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "OFFSET", "JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN",

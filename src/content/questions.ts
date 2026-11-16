@@ -1,4 +1,7 @@
 import type { EcoRef } from "../ecosystem";
+import { DESIGN_QUESTIONS, type DesignQuestion } from "./design";
+
+export type { DesignQuestion };
 
 export type Level = "easy" | "medium" | "hard";
 
@@ -30,7 +33,7 @@ export interface TheoryQuestion extends Base {
   answer: string;
 }
 
-export type Question = SqlQuestion | TheoryQuestion;
+export type Question = SqlQuestion | TheoryQuestion | DesignQuestion;
 
 export const QUESTIONS: Question[] = [
   // ---------- Easy ----------
@@ -303,6 +306,8 @@ export const QUESTIONS: Question[] = [
     answer: "Cache-aside: read the cache; on a miss, read the DB and fill the cache with a TTL. On writes, update the DB and then delete the cache key (don't update it, to avoid races). Write-through: write to the cache and DB together. Watch for the thundering herd on hot-key expiry (use locks or request coalescing, or early refresh) and for caching negative results.",
     related: [{ app: "structura", topic: "distributed-cache" }, { app: "structura", topic: "redis-basics" }],
   },
+  // ---------- Schema design (DBML + diagram) ----------
+  ...DESIGN_QUESTIONS,
 ];
 
 export const questionById = (id: string) => QUESTIONS.find((q) => q.id === id);

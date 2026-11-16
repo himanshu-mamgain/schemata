@@ -1,57 +1,49 @@
 import { useSyncExternalStore } from "react";
+import { THEME_COLORS, THEME_KEY, type Theme } from "./theme-boot";
+
+export type { Theme };
 
 /**
- * Dark by default, like Structura, so the two apps feel like one; "system"
- * follows the OS. The choice is a per-device convenience kept in localStorage.
+ * Learning themes. Paper is the default, matching Structura's Warm Paper.
+ * Blueprint and Chalkboard are darker, for evening study. The choice is a
+ * per-device convenience in localStorage. The script in layout.tsx applies it
+ * before the first paint, so there is no flash.
  */
-export type ThemeChoice = "system" | "light" | "dark";
-export type Theme = "light" | "dark";
 
-const KEY = "schemata:theme";
-const media = window.matchMedia("(prefers-color-scheme: light)");
+export const THEMES: { id: Theme; name: string; blurb: string; dark: boolean; swatch: [string, string] }[] = [
+  { id: "paper", name: "Paper", blurb: "Warm notebook paper, like Structura", dark: false, swatch: ["#f7f5ef", "#2f6f9f"] },
+  { id: "blueprint", name: "Blueprint", blurb: "Navy grid, like a schema drawing", dark: true, swatch: ["#0f2741", "#7cc4f0"] },
+  { id: "chalkboard", name: "Chalkboard", blurb: "Slate green with chalk colours", dark: true, swatch: ["#1f2b27", "#f2d879"] },
+];
+
+const isTheme = (v: unknown): v is Theme => THEMES.some((t) => t.id === v);
+
 const listeners = new Set<() => void>();
-
-function readChoice(): ThemeChoice {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v === "light" || v === "system" ? v : "dark";
-  } catch {
-    return "dark";
-  }
+let current: Theme = "paper";
+if (typeof document !== "undefined") {
+  const set = document.documentElement.dataset.theme;
+  current = isTheme(set) ? set : "paper";
 }
 
-let choice = readChoice();
-
-export const resolve = (c: ThemeChoice): Theme => (c === "system" ? (media.matches ? "light" : "dark") : c);
-
-function apply() {
-  const theme = resolve(choice);
-  const root = document.documentElement;
-  if (choice === "system") root.removeAttribute("data-theme");
-  else root.setAttribute("data-theme", choice);
-  root.style.colorScheme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "light" ? "#f6f7fb" : "#0a0e1a");
-  listeners.forEach((l) => l());
-}
-
-export function setThemeChoice(c: ThemeChoice) {
-  choice = c;
+export function setTheme(t: Theme) {
+  current = t;
   try {
-    if (c === "dark") localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, c);
+    if (t === "paper") localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, t);
   } catch {
     /* private mode: still applies for this visit */
   }
-  apply();
+  const root = document.documentElement;
+  root.dataset.theme = t;
+  root.style.colorScheme = THEMES.find((x) => x.id === t)!.dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", THEME_COLORS[t]);
+  listeners.forEach((l) => l());
 }
-
-media.addEventListener("change", () => choice === "system" && apply());
-apply();
 
 const subscribe = (cb: () => void) => {
   listeners.add(cb);
   return () => listeners.delete(cb);
 };
 
-export const useThemeChoice = () => useSyncExternalStore(subscribe, () => choice);
-export const useTheme = () => useSyncExternalStore(subscribe, () => resolve(choice));
+export const useTheme = () => useSyncExternalStore(subscribe, () => current, () => "paper" as Theme);
+export const isDark = (t: Theme) => THEMES.find((x) => x.id === t)!.dark;
