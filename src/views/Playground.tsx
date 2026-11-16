@@ -1,14 +1,19 @@
+"use client";
 import { useEffect, useState } from "react";
-import { Bookmark, Download, Play, RotateCcw, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Bookmark, Download, Network, Play, RotateCcw, Trash2 } from "lucide-react";
 import { SqlEditor } from "../editor/SqlEditor";
 import { SchemaBrowser } from "../components/SchemaBrowser";
 import { ResultsPanel } from "../components/Results";
 import { isLoaded, loadDataset, resetDataset, run, type QueryResult } from "../db/engine";
 import { DATASETS } from "../db/datasets";
 import { draft, savedQueries } from "../store";
-import { navigate } from "../router";
+import { routes } from "../routes";
+import { SchemaDiagram } from "../erd/SchemaDiagram";
 
-export function Playground({ dataset: fromUrl }: { dataset?: string }) {
+export function Playground() {
+  const fromUrl = useSearchParams().get("dataset") ?? undefined;
+  const router = useRouter();
   const d = draft.use();
   const dataset = fromUrl && DATASETS.some((x) => x.id === fromUrl) ? fromUrl : d.dataset;
   const info = DATASETS.find((x) => x.id === dataset)!;
@@ -21,6 +26,7 @@ export function Playground({ dataset: fromUrl }: { dataset?: string }) {
   const [loaded, setLoaded] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [diagram, setDiagram] = useState(false);
 
   // The draft follows the editor, so leaving the page keeps your query.
   useEffect(() => {
@@ -37,7 +43,7 @@ export function Playground({ dataset: fromUrl }: { dataset?: string }) {
     draft.set({ dataset: id, sql });
     setResults(null);
     setError(null);
-    navigate({ name: "playground", dataset: id });
+    router.replace(routes.playground(id));
   };
 
   const exec = async (text = sql) => {
@@ -163,8 +169,12 @@ export function Playground({ dataset: fromUrl }: { dataset?: string }) {
           <button className="btn ghost" onClick={save}>
             <Bookmark size={16} /> Save
           </button>
+          <button className={diagram ? "btn ghost is-on" : "btn ghost"} onClick={() => setDiagram((v) => !v)} aria-pressed={diagram} disabled={loaded === false} title="Draw this dataset's tables and foreign keys">
+            <Network size={16} /> Diagram
+          </button>
           <span className="muted small grow-right">Real PostgreSQL in your browser · changes are kept</span>
         </div>
+        {diagram && loaded && <SchemaDiagram schema={dataset} version={version} height={380} />}
         <SqlEditor value={sql} onChange={setSql} onRun={exec} height={300} />
         <ResultsPanel results={results} error={error} />
       </section>

@@ -1,3 +1,4 @@
+"use client";
 import { useEffect, useRef, useState } from "react";
 import { LayoutGrid } from "lucide-react";
 import { ECOSYSTEM, THIS_APP, ecoRef, type EcoRef } from "../ecosystem";

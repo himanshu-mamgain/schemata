@@ -1,6 +1,7 @@
 import { DATASETS } from "../db/datasets";
-import { RepoList } from "./Learn";
-import { href, onLinkClick } from "../router";
+import Link from "next/link";
+import { LearnSwitch, RepoList } from "./Learn";
+import { routes } from "../routes";
 
 /** Open-source datasets and repos. Every repo here was checked to exist on GitHub. */
 const MORE_DATA = [
@@ -25,15 +26,16 @@ const LEARN_INTERNALS = [
 export function Sources() {
   return (
     <div>
+      <LearnSwitch />
       <h1>Data sources</h1>
       <p className="lead">The datasets behind the editor, and more open-source ones to practise on.</p>
       <h2>In the editor</h2>
       <ul className="repos">
         {DATASETS.map((d) => (
           <li key={d.id}>
-            <a href={href({ name: "playground", dataset: d.id })} onClick={onLinkClick}>
+            <Link href={routes.playground(d.id)}>
               <strong>{d.name}</strong>
-            </a>{" "}
+            </Link>{" "}
             <span className="muted">{d.blurb}</span>{" "}
             {d.repo ? (
               <a href={`https://github.com/${d.repo}`} target="_blank" rel="noreferrer">

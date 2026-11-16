@@ -1,10 +1,76 @@
-# Schemata on Netlify: a static PWA. Postgres runs in the browser (PGlite), so there is no backend.
+# Schemata on Netlify: a static Next.js export (out/). Postgres runs in the browser (PGlite),
+# so there is no backend.
 [build]
   command = "npm run build"
-  publish = "dist"
+  publish = "out"
 
 [build.environment]
   NODE_VERSION = "22"
+
+# Older links put everything in the query string. DSA Atlas and Structura build these
+# (docs/ecosystem.md), so they keep working: each moves to the page's own address.
+[[redirects]]
+  from = "/"
+  query = { topic = ":id" }
+  to = "/topics/:id"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { q = ":id" }
+  to = "/questions/:id"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "playground", dataset = ":dataset" }
+  to = "/playground?dataset=:dataset"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "playground" }
+  to = "/playground"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "questions", stage = ":stage" }
+  to = "/questions?stage=:stage"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "questions" }
+  to = "/questions"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "roadmap" }
+  to = "/roadmap"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "databases" }
+  to = "/databases"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/"
+  query = { page = "sources" }
+  to = "/sources"
+  status = 301
+  force = true
 
 # DSA Atlas and Structura read this list to link to Schemata topics.
 [[headers]]
@@ -17,3 +83,18 @@
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/pglite/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
  * the last playground draft. Every access is guarded: storage can be blocked.
  */
 function read<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback; // prerendering at build time
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : fallback;
@@ -13,6 +14,7 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 function write(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -37,6 +39,8 @@ function createStore<T>(key: string, fallback: T) {
           return () => listeners.delete(cb);
         },
         () => value,
+        // Pages are prerendered without storage; the first client render matches, then this device's data shows.
+        () => fallback,
       ),
   };
 }
@@ -50,6 +54,13 @@ export function markSolved(id: string) {
 /** Your draft answer per question, so leaving the page doesn't lose it. */
 export const answers = createStore<Record<string, string>>("schemata:answers", {});
 export const saveAnswer = (id: string, sql: string) => answers.set({ ...answers.get(), [id]: sql });
+
+/** Your DBML draft per design question. */
+export const designs = createStore<Record<string, string>>("schemata:designs", {});
+export const saveDesign = (id: string, dbml: string) => designs.set({ ...designs.get(), [id]: dbml });
+
+/** The diagram editor's last DBML, so a reload doesn't lose it. */
+export const erdDraft = createStore<string>("schemata:erd-draft", "");
 
 export interface SavedQuery {
   id: string;

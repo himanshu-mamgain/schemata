@@ -1,60 +1,132 @@
-import { CheckCircle2, Circle, Code2, Database, Map, MessageSquareCode } from "lucide-react";
+"use client";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CheckCircle2, Circle, Code2, Database, FolderGit2, Map as MapIcon, MessageSquareCode, Network, PenTool } from "lucide-react";
 import { PHASES, ROADMAP, stageById, type Stage } from "../content/roadmap";
 import { QUESTIONS, type Level } from "../content/questions";
 import { DATABASES, databaseById, type DatabaseGuide } from "../content/databases";
-import { CodeBlock } from "../editor/SqlEditor";
+import { CodeBlock } from "../components/CodeBlock";
 import { EcoLinks } from "../components/AppSwitcher";
 import { draft, solved } from "../store";
-import { href, navigate, onLinkClick } from "../router";
+import { routes } from "../routes";
 
-const openInPlayground = (sql: string, dataset = "shop") => {
-  draft.set({ dataset, sql });
-  navigate({ name: "playground", dataset });
-};
+/** Opens a query in the SQL editor (the editor reads it from the saved draft). */
+function useOpenInPlayground() {
+  const router = useRouter();
+  return (sql: string, dataset = "shop") => {
+    draft.set({ dataset, sql });
+    router.push(routes.playground(dataset));
+  };
+}
 
 const A = ({ to, children, className }: { to: string; children: React.ReactNode; className?: string }) => (
-  <a href={to} onClick={onLinkClick} className={className}>
+  <Link href={to} className={className}>
     {children}
-  </a>
+  </Link>
 );
+
+/** Roadmap · Databases · Data sources: the three pages of the Learn tab. */
+export function LearnSwitch() {
+  const path = usePathname();
+  const items: [string, string, typeof MapIcon][] = [
+    [routes.roadmap, "Roadmap", MapIcon],
+    [routes.databases, "Databases", Database],
+    [routes.sources, "Data sources", FolderGit2],
+  ];
+  return (
+    <nav className="seg learn-switch" aria-label="Learn">
+      {items.map(([to, label, Icon]) => (
+        <Link key={to} href={to} aria-current={path === to ? "page" : undefined}>
+          <Icon size={15} aria-hidden /> {label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 // ---------- Home ----------
 export function Home() {
   const done = solved.use();
   const count = QUESTIONS.filter((q) => done[q.id]).length;
+  // The next question in roadmap order that you haven't done yet.
+  const order = new Map(ROADMAP.map((s, i) => [s.id, i]));
+  const next = [...QUESTIONS].sort((a, b) => (order.get(a.stage) ?? 99) - (order.get(b.stage) ?? 99)).find((q) => !done[q.id]);
+  const nextStage = next ? stageById(next.stage) : undefined;
+  const designs = QUESTIONS.filter((q) => q.kind === "design");
+
   return (
     <div className="home">
       <section className="hero">
+        <p className="eyebrow">Your database notebook</p>
         <h1>
-          Learn databases <span className="grad">by running them</span>
+          Learn databases <span className="hl">by running them</span>
         </h1>
         <p className="lead">
-          A real PostgreSQL runs in this tab. Follow the roadmap from your first SELECT to MVCC, practise the interview questions that keep coming
-          up, and learn when to pick Postgres, MongoDB, Redis, Cassandra and the rest.
+          A real PostgreSQL runs in this tab. Follow the roadmap from your first SELECT to MVCC, draw schemas as diagrams, and practise the interview
+          questions that keep coming up.
         </p>
         <div className="row">
-          <A to="/?page=playground" className="btn primary">
-            <Code2 size={16} /> Open the SQL editor
+          <A to={next ? routes.question(next.id) : routes.questions()} className="btn primary">
+            <MessageSquareCode size={16} /> {count === 0 ? "Start practising" : "Continue practising"}
           </A>
-          <A to="/?page=roadmap" className="btn">
-            <Map size={16} /> Start the roadmap
+          <A to={routes.roadmap} className="btn">
+            <MapIcon size={16} /> The roadmap
           </A>
         </div>
       </section>
-      <section className="cards3">
-        <A to="/?page=roadmap" className="card">
-          <Map size={20} />
-          <h3>Roadmap</h3>
-          <p className="muted">{ROADMAP.length} stages in 4 phases, each with a query to try.</p>
+
+      {next && (
+        <A to={routes.question(next.id)} className="card up-next">
+          <span className="note-label">Up next</span>
+          <strong>{next.title}</strong>
+          <span className="muted small">
+            {nextStage?.title} · <span className={`level ${next.level}`}>{next.level}</span>
+          </span>
         </A>
-        <A to="/?page=questions" className="card">
+      )}
+
+      <section className="phase-progress" aria-label="Progress by phase">
+        {PHASES.map((phase) => {
+          const qs = QUESTIONS.filter((q) => stageById(q.stage)?.phase === phase);
+          const n = qs.filter((q) => done[q.id]).length;
+          return (
+            <div key={phase} className="phase-meter">
+              <span className="small">{phase}</span>
+              <span className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={qs.length} aria-valuenow={n} aria-label={`${phase}: ${n} of ${qs.length}`}>
+                <span style={{ width: qs.length ? `${(n / qs.length) * 100}%` : 0 }} />
+              </span>
+              <span className="small muted">
+                {n}/{qs.length}
+              </span>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="cards4">
+        <A to={routes.playground()} className="card">
+          <Code2 size={20} />
+          <h3>SQL editor</h3>
+          <p className="muted">Real Postgres with three datasets, query plans and saved queries.</p>
+        </A>
+        <A to={routes.questions()} className="card">
           <MessageSquareCode size={20} />
-          <h3>Interview questions</h3>
+          <h3>Practice</h3>
           <p className="muted">
-            {QUESTIONS.length} questions, checked automatically. You've done {count}.
+            {QUESTIONS.length} questions, checked automatically. You&apos;ve done {count}.
           </p>
         </A>
-        <A to="/?page=databases" className="card">
+        <A to={routes.erd} className="card">
+          <Network size={20} />
+          <h3>Schema diagrams</h3>
+          <p className="muted">Write DBML and see the ER diagram, or draw any dataset.</p>
+        </A>
+        <A to={designs[0] ? routes.question(designs[0].id) : routes.questions()} className="card">
+          <PenTool size={20} />
+          <h3>Design problems</h3>
+          <p className="muted">{designs.length} schemas to design, from blog tags to cinema seats, checked as you go.</p>
+        </A>
+        <A to={routes.databases} className="card">
           <Database size={20} />
           <h3>Database guide</h3>
           <p className="muted">{DATABASES.length} databases: when to use them, who does, and what to learn.</p>
@@ -69,6 +141,7 @@ export function Roadmap() {
   const done = solved.use();
   return (
     <div>
+      <LearnSwitch />
       <h1>Roadmap</h1>
       <p className="lead">From your first query to how databases work inside. Each stage links to its interview questions.</p>
       {PHASES.map((phase) => (
@@ -80,7 +153,7 @@ export function Roadmap() {
               const n = qs.filter((q) => done[q.id]).length;
               return (
                 <li key={s.id}>
-                  <A to={href({ name: "topic", id: s.id })} className="stage-card">
+                  <A to={routes.topic(s.id)} className="stage-card">
                     <strong>{s.title}</strong>
                     <span className="muted small">{s.summary}</span>
                     {qs.length > 0 && (
@@ -101,12 +174,13 @@ export function Roadmap() {
 
 function StagePage({ s }: { s: Stage }) {
   const done = solved.use();
+  const openIn = useOpenInPlayground();
   const qs = QUESTIONS.filter((q) => q.stage === s.id);
   const i = ROADMAP.indexOf(s);
   return (
     <article>
       <p className="crumbs">
-        <A to="/?page=roadmap">Roadmap</A> · {s.phase}
+        <A to={routes.roadmap}>Roadmap</A> · {s.phase}
       </p>
       <h1>{s.title}</h1>
       <p className="lead">{s.summary}</p>
@@ -118,7 +192,7 @@ function StagePage({ s }: { s: Stage }) {
       </ol>
       <h3>Try it</h3>
       <CodeBlock code={s.tryIt} />
-      <button className="btn primary" onClick={() => openInPlayground(s.tryIt)}>
+      <button className="btn primary" onClick={() => openIn(s.tryIt)}>
         <Code2 size={16} /> Open in the editor
       </button>
       {qs.length > 0 && (
@@ -129,8 +203,8 @@ function StagePage({ s }: { s: Stage }) {
       )}
       <EcoLinks refs={s.related} />
       <p className="next">
-        {i > 0 && <A to={href({ name: "topic", id: ROADMAP[i - 1].id })}>← {ROADMAP[i - 1].title}</A>}
-        {i < ROADMAP.length - 1 && <A to={href({ name: "topic", id: ROADMAP[i + 1].id })}>{ROADMAP[i + 1].title} →</A>}
+        {i > 0 && <A to={routes.topic(ROADMAP[i - 1].id)}>← {ROADMAP[i - 1].title}</A>}
+        {i < ROADMAP.length - 1 && <A to={routes.topic(ROADMAP[i + 1].id)}>{ROADMAP[i + 1].title} →</A>}
       </p>
     </article>
   );
@@ -144,10 +218,10 @@ function QuestionList({ list, done }: { list: typeof QUESTIONS; done: Record<str
     <ul className="qlist">
       {list.map((q) => (
         <li key={q.id}>
-          <A to={href({ name: "question", id: q.id })} className="qrow">
+          <A to={routes.question(q.id)} className="qrow">
             {done[q.id] ? <CheckCircle2 size={16} className="ok" /> : <Circle size={16} className="muted" />}
             <span className="grow">{q.title}</span>
-            <span className="muted small">{q.kind === "sql" ? "SQL" : "Theory"}</span>
+            <span className={`kind kind-${q.kind}`}>{q.kind === "sql" ? "SQL" : q.kind === "design" ? "Design" : "Theory"}</span>
             <span className={`level ${q.level}`}>{q.level}</span>
           </A>
         </li>
@@ -156,7 +230,8 @@ function QuestionList({ list, done }: { list: typeof QUESTIONS; done: Record<str
   );
 }
 
-export function Questions({ stage }: { stage?: string }) {
+export function Questions() {
+  const stage = useSearchParams().get("stage") ?? undefined;
   const done = solved.use();
   const list = stage ? QUESTIONS.filter((q) => q.stage === stage) : QUESTIONS;
   const s = stage ? stageById(stage) : undefined;
@@ -164,11 +239,12 @@ export function Questions({ stage }: { stage?: string }) {
     <div>
       <h1>Interview questions{s ? `: ${s.title}` : ""}</h1>
       <p className="lead">
-        SQL questions run on the built-in shop dataset and are checked against the expected result. Theory questions are the ones interviewers ask out loud.
+        SQL questions run on the built-in shop dataset and are checked against the expected result. Design questions are schemas you draw in DBML.
+        Theory questions are the ones interviewers ask out loud.
         {s && (
           <>
             {" "}
-            <A to="/?page=questions">Show all</A>
+            <A to={routes.questions()}>Show all</A>
           </>
         )}
       </p>
@@ -192,11 +268,12 @@ export function Questions({ stage }: { stage?: string }) {
 export function Databases() {
   return (
     <div>
+      <LearnSwitch />
       <h1>Database guide</h1>
       <p className="lead">Every database is a set of trade-offs. Start with Postgres; reach for the others when an access pattern demands it.</p>
       <div className="db-grid">
         {DATABASES.map((d) => (
-          <A key={d.id} to={href({ name: "topic", id: d.id })} className="card">
+          <A key={d.id} to={routes.topic(d.id)} className="card">
             <span className="tag">{d.family}</span>
             <h3>{d.name}</h3>
             <p className="muted small">{d.tagline}</p>
@@ -239,10 +316,11 @@ export function Databases() {
 }
 
 function DatabasePage({ d }: { d: DatabaseGuide }) {
+  const openIn = useOpenInPlayground();
   return (
     <article>
       <p className="crumbs">
-        <A to="/?page=databases">Databases</A> · {d.family}
+        <A to={routes.databases}>Databases</A> · {d.family}
       </p>
       <h1>{d.name}</h1>
       <p className="lead">{d.tagline}</p>
@@ -276,7 +354,7 @@ function DatabasePage({ d }: { d: DatabaseGuide }) {
       <h3>What it looks like</h3>
       <CodeBlock code={d.example} language={d.language} />
       {d.practice && (
-        <button className="btn" onClick={() => openInPlayground(d.example, d.practice)}>
+        <button className="btn" onClick={() => openIn(d.example, d.practice)}>
           <Code2 size={16} /> Try it in the editor
         </button>
       )}
@@ -328,7 +406,7 @@ export function TopicPage({ id }: { id: string }) {
   if (d) return <DatabasePage d={d} />;
   return (
     <p>
-      No topic called “{id}”. <A to="/?page=roadmap">See the roadmap</A>
+      No topic called “{id}”. <A to={routes.roadmap}>See the roadmap</A>
     </p>
   );
 }

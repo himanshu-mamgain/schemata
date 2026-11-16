@@ -4,6 +4,7 @@
  */
 import { PGlite, type Results } from "@electric-sql/pglite";
 import { DATASETS, SHOP_SQL, cleanScript } from "./datasets";
+import { toDbml, type CatalogColumn, type CatalogConstraint } from "../erd/fromSchema";
 
 export interface QueryResult {
   fields: string[];
@@ -22,14 +23,29 @@ function serial<T>(fn: (db: PGlite) => Promise<T>): Promise<T> {
   return run;
 }
 
+/** Some servers send .wasm without its MIME type, which compileStreaming refuses. */
+const wasm = (url: string) =>
+  WebAssembly.compileStreaming(fetch(url)).catch(async () => WebAssembly.compile(await (await fetch(url)).arrayBuffer()));
+
+/** PGlite's WebAssembly and files, served from public/pglite/ (see scripts/pglite-assets.mjs). */
+async function assets() {
+  const [pgliteWasmModule, initdbWasmModule, fsBundle] = await Promise.all([
+    wasm("/pglite/pglite.wasm"),
+    wasm("/pglite/initdb.wasm"),
+    fetch("/pglite/pglite.data").then((r) => r.blob()),
+  ]);
+  return { pgliteWasmModule, initdbWasmModule, fsBundle };
+}
+
 export function getDb(): Promise<PGlite> {
   dbPromise ??= (async () => {
+    const files = await assets();
     let db: PGlite;
     try {
-      db = await PGlite.create("idb://schemata");
+      db = await PGlite.create({ dataDir: "idb://schemata", ...files });
     } catch {
       // Private windows can block IndexedDB: fall back to an in-memory database.
-      db = await PGlite.create();
+      db = await PGlite.create(files);
     }
     const has = await db.query("SELECT 1 FROM pg_namespace WHERE nspname = 'shop'");
     if (has.rows.length === 0) await db.exec(SHOP_SQL);
@@ -91,6 +107,35 @@ export function columns(schema: string): Promise<Column[]> {
       [schema],
     );
     return r.rows;
+  });
+}
+
+/** Catalog queries behind the schema diagram: columns, keys and foreign keys. */
+export const CATALOG_COLUMNS = `
+  SELECT c.relname::text AS "table", a.attname::text AS "column", format_type(a.atttypid, a.atttypmod) AS "type", a.attnotnull AS not_null
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+  ORDER BY c.relname, a.attnum`;
+export const CATALOG_CONSTRAINTS = `
+  SELECT con.contype::text AS kind, c.relname::text AS "table",
+    ARRAY(SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.n ORDER BY k.o) AS cols,
+    f.relname::text AS ref_table,
+    CASE WHEN con.contype = 'f' THEN ARRAY(SELECT a.attname::text FROM unnest(con.confkey) WITH ORDINALITY k(n, o) JOIN pg_attribute a ON a.attrelid = con.confrelid AND a.attnum = k.n ORDER BY k.o) END AS ref_cols
+  FROM pg_constraint con
+  JOIN pg_class c ON c.oid = con.conrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_class f ON f.oid = con.confrelid
+  WHERE n.nspname = $1 AND con.contype IN ('p', 'u', 'f')
+  ORDER BY c.relname, con.conname`;
+
+/** DBML for a loaded dataset, for the schema diagram. */
+export function schemaDbml(schema: string): Promise<string> {
+  return serial(async (db) => {
+    const cols = await db.query<CatalogColumn>(CATALOG_COLUMNS, [schema]);
+    const cons = await db.query<CatalogConstraint>(CATALOG_CONSTRAINTS, [schema]);
+    return toDbml(cols.rows, cons.rows);
   });
 }
 

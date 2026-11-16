@@ -17,7 +17,7 @@
   {
     "id": "docker-vs-vm",
     "title": "Docker vs Virtual Machines",
-    "blurb": "Hypervisors vs shared kernels, images, layers, and when to use which"
+    "blurb": "Virtual machines vs containers: what each one shares, images and layers, and when to use which"
   },
   {
     "id": "twitter-timeline",
@@ -32,7 +32,7 @@
   {
     "id": "kafka",
     "title": "Kafka: Event Streaming",
-    "blurb": "Topics, partitions, consumer groups, replication and delivery guarantees"
+    "blurb": "Topics, partitions, consumer groups, copies across brokers, and what \"delivered\" really means"
   },
   {
     "id": "payment-idempotency",
@@ -72,7 +72,7 @@
   {
     "id": "scaling-aws",
     "title": "Scaling to Millions of Users on AWS",
-    "blurb": "From one server to a load-balanced, cached, sharded fleet, one bottleneck at a time"
+    "blurb": "From one server to millions of users: load balancing, caching, queues and shards, one bottleneck at a time"
   },
   {
     "id": "rate-limiter",
@@ -92,7 +92,7 @@
   {
     "id": "cdn",
     "title": "CDN: Content Delivery Network",
-    "blurb": "Edge caches, cache keys and TTLs, shielding the origin, purging and hit ratio"
+    "blurb": "Caches close to your visitors: cache keys, how long to keep files, a shield for your server, purging and hit ratio"
   },
   {
     "id": "notification-system",
@@ -120,6 +120,11 @@
     "blurb": "Chunked upload, transcoding into a bitrate ladder, adaptive streaming and CDN delivery"
   },
   {
+    "id": "metrics-monitoring",
+    "title": "Metrics & Monitoring System",
+    "blurb": "Collecting millions of samples a second, storing them as compressed time series, and alerting without false pages"
+  },
+  {
     "id": "file-sync",
     "title": "File Sync (Dropbox-style)",
     "blurb": "Block-level sync: chunk and hash files, upload only what changed, and tell other devices"
@@ -128,6 +133,11 @@
     "id": "leader-election",
     "title": "Leader Election (Raft)",
     "blurb": "How a cluster agrees on one leader: terms, votes, heartbeats and fencing"
+  },
+  {
+    "id": "message-queue",
+    "title": "Distributed Message Queue",
+    "blurb": "Visibility timeouts, acks, retries and dead-letter queues, and why delivery is at least once"
   },
   {
     "id": "locking",
@@ -167,27 +177,27 @@
   {
     "id": "aws-vpc",
     "title": "AWS VPC Networking",
-    "blurb": "Your own network in AWS: CIDR ranges, public and private subnets, route tables, NAT gateways and endpoints"
+    "blurb": "Your own network in AWS: address ranges, public and private subnets, route tables, NAT gateways and endpoints"
   },
   {
     "id": "aws-alb",
     "title": "Application Load Balancer",
-    "blurb": "One HTTPS entry point for many services: listeners, rules, target groups, health checks and routing algorithms"
+    "blurb": "One HTTPS address for many services: listeners, rules, target groups, health checks and how a target is picked"
   },
   {
     "id": "aws-ecs-fargate",
     "title": "ECS on Fargate",
-    "blurb": "Running containers without servers: task definitions, services, autoscaling on CPU and safe rolling deploys"
+    "blurb": "Running containers with no servers to manage: task definitions, services, scaling on CPU and safe deploys"
   },
   {
     "id": "aws-ecs-fullstack",
     "title": "Full-stack App on ECS",
-    "blurb": "A Vue client and Node API on ECS with DynamoDB and S3, shipped by CodePipeline with blue/green deploys"
+    "blurb": "A Vue client and a Node API on ECS, with DynamoDB and S3, shipped by a pipeline with blue/green deploys"
   },
   {
     "id": "load-balancer",
     "title": "Load Balancer",
-    "blurb": "Spreading requests over servers: algorithms, health checks and failover"
+    "blurb": "Sharing requests across servers: how it picks one, health checks, and what happens when something fails"
   },
   {
     "id": "redis-basics",
@@ -202,41 +212,41 @@
   {
     "id": "aws-basics",
     "title": "AWS Basics: What the Cloud Is and Why",
-    "blurb": "Buying servers vs renting them, regions and Availability Zones, Auto Scaling and Lambda, and what each costs"
+    "blurb": "Buying servers or renting them, regions and Availability Zones, Auto Scaling and Lambda, and what each one costs"
   },
   {
     "id": "aws-iam",
     "title": "AWS IAM: Who Can Do What",
-    "blurb": "Users, roles and JSON policies, and how AWS decides: explicit deny, SCPs, resource policies and permissions boundaries"
+    "blurb": "Who can do what in AWS: users, roles and JSON policies, and how AWS decides yes or no"
   },
   {
     "id": "aws-disaster-recovery",
     "title": "Disaster Recovery Across AWS Regions",
-    "blurb": "RTO and RPO, the four AWS strategies from backup-and-restore to active/active, and why replicas are not backups"
+    "blurb": "How fast you must come back and how much data you may lose (RTO and RPO), AWS's four strategies, and why a copy is not a backup"
   },
   {
     "id": "kafka-basics",
     "title": "Kafka Basics: Topics, Partitions, Groups",
-    "blurb": "Events in an append-only log: keys pick partitions, consumer groups share them, offsets let anyone replay"
+    "blurb": "Events in a log you only add to: keys pick partitions, consumer groups share them, and offsets let anyone read again"
   },
   {
     "id": "kafka-reliability",
     "title": "Kafka Reliability: Durability, Exactly-Once",
-    "blurb": "ISR, acks and min.insync.replicas, unclean leader election, idempotent producers, transactions and rebalances"
+    "blurb": "In-sync copies, acks and min.insync.replicas, unclean leader election, idempotent producers, transactions and rebalances"
   },
   {
     "id": "terraform-basics",
     "title": "Terraform Basics: Plan, Apply, State",
-    "blurb": "Infrastructure as code: resources, the dependency graph, in-place vs replace, drift, and why the state file matters"
+    "blurb": "Infrastructure as code: resources, the order Terraform works in, updating vs replacing, drift, and why the state file matters"
   },
   {
     "id": "terraform-state",
     "title": "Terraform Remote State and Locking",
-    "blurb": "Why state lives in S3, how a lock stops two applies colliding, and what orphans and stale locks look like"
+    "blurb": "Why state lives in S3, how a lock stops two applies at once, and what lost resources and stuck locks look like"
   },
   {
     "id": "terraform-modules",
     "title": "Terraform Modules and Environments",
-    "blurb": "Copy-paste vs workspaces vs versioned modules: blast radius, promotion from dev to prod, and guarding against destroy"
+    "blurb": "Copied folders vs workspaces vs versioned modules: limiting damage, moving changes from dev to prod, and guarding against deletes"
   }
 ]

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { monaco } from "./monaco";
+"use client";
+import { useEffect, useRef } from "react";
+import { editorTheme, monaco } from "./monaco";
 import { useTheme } from "../theme";
 
 interface Props {
@@ -9,9 +10,11 @@ interface Props {
   onRun?: (sql: string) => void;
   language?: string;
   height?: number | string;
+  /** Problems to underline, e.g. DBML parse errors (1-based lines and columns). */
+  markers?: { line: number; column: number; endLine: number; endColumn: number; message: string }[];
 }
 
-export function SqlEditor({ value, onChange, onRun, language = "pgsql", height = 260 }: Props) {
+export function SqlEditor({ value, onChange, onRun, language = "pgsql", height = 260, markers }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const runRef = useRef(onRun);
@@ -24,14 +27,15 @@ export function SqlEditor({ value, onChange, onRun, language = "pgsql", height =
     const ed = monaco.editor.create(host.current!, {
       value,
       language,
-      theme: theme === "light" ? "schemata-light" : "schemata-dark",
+      theme: editorTheme(theme),
       minimap: { enabled: false },
       fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+      // next/font gives the mono font a generated family name, kept in --font-mono.
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() || "Consolas, monospace",
       automaticLayout: true,
       scrollBeyondLastLine: false,
       tabSize: 2,
-      wordWrap: "on",
+      wordWrap: language === "dbml" ? "off" : "on",
       padding: { top: 10, bottom: 10 },
       renderLineHighlight: "line",
       fixedOverflowWidgets: true,
@@ -54,21 +58,25 @@ export function SqlEditor({ value, onChange, onRun, language = "pgsql", height =
   }, [value]);
 
   useEffect(() => {
-    monaco.editor.setTheme(theme === "light" ? "schemata-light" : "schemata-dark");
+    monaco.editor.setTheme(editorTheme(theme));
   }, [theme]);
 
-  return <div className="editor" ref={host} style={{ height }} />;
-}
-
-/** Read-only, syntax-highlighted code (examples in the guide). */
-export function CodeBlock({ code, language = "pgsql" }: { code: string; language?: string }) {
-  const [html, setHtml] = useState<string | null>(null);
   useEffect(() => {
-    let live = true;
-    monaco.editor.colorize(code, language, { tabSize: 2 }).then((h) => live && setHtml(h));
-    return () => {
-      live = false;
-    };
-  }, [code, language]);
-  return html ? <pre className="code" dangerouslySetInnerHTML={{ __html: html }} /> : <pre className="code">{code}</pre>;
+    const model = editor.current?.getModel();
+    if (!model) return;
+    monaco.editor.setModelMarkers(
+      model,
+      "schemata",
+      (markers ?? []).map((m) => ({
+        startLineNumber: m.line,
+        startColumn: m.column,
+        endLineNumber: m.endLine,
+        endColumn: Math.max(m.endColumn, m.column + 1),
+        message: m.message,
+        severity: monaco.MarkerSeverity.Error,
+      })),
+    );
+  }, [markers, value]);
+
+  return <div className="editor" ref={host} style={{ height }} />;
 }

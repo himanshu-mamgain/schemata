@@ -1,3 +1,4 @@
+"use client";
 import { useEffect, useState } from "react";
 import { ChevronRight, Table2 } from "lucide-react";
 import { columns, type Column } from "../db/engine";
