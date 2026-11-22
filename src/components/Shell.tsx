@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookOpen, Check, Code2, Database, GraduationCap, House, Network, Palette, type LucideIcon } from "lucide-react";
 import { AppSwitcher } from "./AppSwitcher";
+import { AccountButton } from "../account/AccountButton";
+import { startAccount } from "../account/account";
 import { InstallButton } from "../pwa/InstallButton";
 import { Pwa } from "../pwa/Pwa";
 import { setTheme, THEMES, useTheme } from "../theme";
@@ -91,6 +93,8 @@ function ThemePicker() {
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  // Loads Supabase only if this browser is signed in to Studia, or is coming back from signing in.
+  useEffect(() => void startAccount(), []);
   const wide = path.startsWith("/playground") || path.startsWith("/erd");
   return (
     <div className="shell">
@@ -105,6 +109,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <span className="appbar-gap" />
         <InstallButton />
         <ThemePicker />
+        <AccountButton />
         <AppSwitcher />
       </header>
       <main className={wide ? "content wide" : "content"}>{children}</main>

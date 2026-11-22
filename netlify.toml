@@ -1,5 +1,8 @@
 # Schemata on Netlify: a static Next.js export (out/). Postgres runs in the browser (PGlite),
-# so there is no backend.
+# so there is no backend. The optional Studia account (GitHub sign-in and progress sync through
+# Supabase) needs NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+# NEXT_PUBLIC_STUDIA_URL and NEXT_PUBLIC_REQUIRE_SIGN_IN=true put it behind the Studia login.
+# See the README, "Studia account".
 [build]
   command = "npm run build"
   publish = "out"

@@ -7,7 +7,7 @@ import { SchemaBrowser } from "../components/SchemaBrowser";
 import { ResultsPanel } from "../components/Results";
 import { isLoaded, loadDataset, resetDataset, run, type QueryResult } from "../db/engine";
 import { DATASETS } from "../db/datasets";
-import { draft, savedQueries } from "../store";
+import { deleteSavedQuery, draft, savedQueries } from "../store";
 import { routes } from "../routes";
 import { SchemaDiagram } from "../erd/SchemaDiagram";
 
@@ -148,7 +148,7 @@ export function Playground() {
                     {q.name}
                   </button>
                   <span className="muted small">{q.dataset}</span>
-                  <button className="icon-btn" aria-label={`Delete ${q.name}`} onClick={() => savedQueries.set(saved.filter((s) => s.id !== q.id))}>
+                  <button className="icon-btn" aria-label={`Delete ${q.name}`} onClick={() => deleteSavedQuery(q.id)}>
                     <Trash2 size={14} />
                   </button>
                 </li>
