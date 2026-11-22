@@ -1549,3 +1549,81 @@ tbody tr:hover {
 .not-found .lead {
   margin: 0 auto 20px;
 }
+
+/* Studia account (src/account). */
+.account-btn {
+  position: relative;
+  overflow: visible;
+}
+.account-avatar {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+}
+.account-avatar.big {
+  width: 44px;
+  height: 44px;
+}
+.account-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bad);
+  box-shadow: 0 0 0 2px var(--card);
+}
+.account-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.account-menu p {
+  margin: 0;
+}
+.account-menu .switcher-title {
+  margin: 0;
+}
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.account-who div {
+  display: grid;
+  min-width: 0;
+}
+.account-sync {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.account-text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.account-error {
+  color: var(--bad);
+  font-size: 14px;
+}
+.account-actions {
+  display: flex;
+  gap: 8px;
+}
+.account-actions .btn,
+.account-signin {
+  flex: 1;
+  justify-content: center;
+}
+.account .spin {
+  animation: account-spin 0.9s linear infinite;
+}
+@keyframes account-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

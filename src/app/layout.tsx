@@ -3,6 +3,7 @@ import { Caveat, Inter, JetBrains_Mono } from "next/font/google";
 import { Shell } from "../components/Shell";
 import { themeBootScript } from "../theme-boot";
 import { installBootScript } from "../pwa/install";
+import { accountBootScript } from "../account/config";
 import "../styles.css";
 
 // Inter for reading (as in Structura), JetBrains Mono for code, Caveat for margin notes and hints.
@@ -32,6 +33,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-theme="paper" className={`${sans.variable} ${mono.variable} ${hand.variable}`} suppressHydrationWarning>
       <head>
+        {/* First, so a signed-out visitor goes to Studia's login before the page paints (when sign-in is required). */}
+        {accountBootScript && <script dangerouslySetInnerHTML={{ __html: accountBootScript }} />}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript + installBootScript }} />
       </head>
       <body>

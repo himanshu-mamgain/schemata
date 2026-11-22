@@ -1,6 +1,6 @@
 # App ecosystem
 
-Schemata, [DSA Atlas](https://github.com/himanshu-mamgain/dsa-atlas) and [Structura](https://github.com/himanshu-mamgain/structura) are linked apps. Each keeps its own data on the device (no shared accounts); they connect through links and a shared app list.
+Schemata, [DSA Atlas](https://github.com/himanshu-mamgain/dsa-atlas) and [Structura](https://github.com/himanshu-mamgain/structura) are linked apps. Each keeps its own data on the device; they connect through links, a shared app list and, optionally, one Studia account (GitHub sign-in through Supabase) that syncs each app's progress across devices. See the README, "Studia account".
 
 ## Apps
 

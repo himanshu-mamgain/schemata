@@ -16,7 +16,7 @@ Part of the same family as [DSA Atlas](https://dsa-atz.netlify.app) and [Structu
 - **Roadmap**: 11 stages in 4 phases, from SELECT to database internals, each with a query to try.
 - **Database guide**: PostgreSQL, MySQL, SQLite, MongoDB, Redis, Cassandra, DynamoDB, Neo4j, Elasticsearch, ClickHouse/DuckDB and vector databases. Each has when to use it and when not to, who uses it, a roadmap, interview questions and open-source repos.
 
-Progress, drafts and saved queries stay on your device (localStorage). Loaded datasets stay in IndexedDB.
+Progress, drafts and saved queries are kept on your device (localStorage), and with a Studia account they follow you to every device. Loaded datasets stay in IndexedDB.
 
 ## Develop
 
@@ -36,6 +36,41 @@ After `next build`, `scripts/flatten-segments.mjs` copies Next's prefetch files 
 Older query-string links (`/?topic=…`, `/?q=…`, `/?page=…`) redirect to the new addresses (`netlify.toml`, and in the browser `src/routes.ts`).
 
 The build refreshes `src/data/structura-topics.json` from Structura (if that fails, the saved copy is used), and publishes `/topics.json` with a CORS header so the other apps can link here.
+
+## Studia account
+
+Schemata shares one account with Structura and DSA Atlas: **Studia**. You sign in with GitHub on
+the Studia site (`studia-hub.netlify.app`), and your progress is kept in Supabase (a hosted
+Postgres database with sign-in built in), one row per app in the `app_progress` table. The table,
+its security rules and the setup steps live in the `studia` repo (`docs/accounts.md`).
+
+What syncs: the questions you solved, your answer to each SQL question, your DBML for each design
+question, and your saved queries. The playground and diagram drafts, the theme and loaded
+datasets stay on the device.
+
+How it syncs (`src/account/`):
+
+- **Read, merge, write.** After you sign in, and 4 seconds after each change, the app fetches the
+  account's copy, merges it with this device's (`merge.ts`) and saves the result in both places.
+- **Merging.** A solved question stays solved (with the first time). An answer or design comes
+  from the copy changed last (`schemata:edited` keeps the times). Saved queries from both devices
+  are kept; a deleted one is remembered for 180 days, so another device doesn't bring it back.
+- **Signing in first.** With `NEXT_PUBLIC_REQUIRE_SIGN_IN=true`, a script in `<head>`
+  (`accountBootScript`) sends a signed-out visitor to Studia's login before the page paints, then
+  Studia sends them back. Offline, after a failed sign-in, and for search engines, it doesn't.
+- The Supabase code is a separate chunk, loaded only when this browser is signed in or signing in.
+
+Netlify environment variables (read at build time):
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | the Supabase Project URL |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the publishable key: public by design (row-level security decides what each user may read or write). Leave "Contains secret values" unticked, or Netlify's secrets scan stops the build |
+| `NEXT_PUBLIC_STUDIA_URL` | `https://studia-hub.netlify.app`: sign in and out there |
+| `NEXT_PUBLIC_REQUIRE_SIGN_IN` | `true` to send signed-out visitors to Studia's login first |
+
+Without the first two the account button is hidden and nothing is loaded. Tests: `npm test`
+(`src/account/sync.test.ts`).
 
 ## Adding content
 
