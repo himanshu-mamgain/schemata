@@ -1,17 +1,67 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Eye, Lightbulb, Network, Play, XCircle } from "lucide-react";
 import type { SqlQuestion } from "../content/questions";
 import { SqlEditor } from "../editor/SqlEditor";
 import { CodeBlock } from "../components/CodeBlock";
 import { ResultsPanel } from "../components/Results";
 import { SchemaBrowser } from "../components/SchemaBrowser";
-import { Markdown } from "../components/Markdown";
+import { Rich } from "../components/Lesson";
 import { SchemaDiagram } from "../erd/SchemaDiagram";
 import { tablesInSql } from "../erd/model";
 import { runAndRollback, type QueryResult } from "../db/engine";
-import { compare, type Verdict } from "../db/check";
+import { cell, compare, type Verdict } from "../db/check";
 import { answers, markSolved, saveAnswer } from "../store";
+
+/**
+ * What your result must look like, worked out from the model answer: the columns in order,
+ * how many rows, and whether their order counts. A sample row only when there are 8 or more,
+ * so the shape is clear without giving the answer away.
+ */
+function Expected({ q }: { q: SqlQuestion }) {
+  const [shape, setShape] = useState<QueryResult | null>(null);
+  useEffect(() => {
+    let live = true;
+    runAndRollback(q.solution, "shop")
+      .then((r) => live && setShape(r.at(-1) ?? null))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [q.solution]);
+  if (!shape) return null;
+  const n = shape.rows.length;
+  return (
+    <section className="expected" aria-label="What your result should look like">
+      <p className="note-label">Your result</p>
+      <p className="small">
+        {shape.fields.length} column{shape.fields.length === 1 ? "" : "s"}, in this order (name them as you like):
+      </p>
+      <div className="expected-cols">
+        {shape.fields.map((f, i) => (
+          <code key={i}>{f}</code>
+        ))}
+      </div>
+      <p className="small muted">
+        {n === 0 ? "How many rows: that's for you to find." : `${n} row${n === 1 ? "" : "s"}.`}{" "}
+        {q.ordered ? "Row order counts: sort exactly as the question says." : "Any row order is fine."} Numbers are compared to 2 decimal places.
+      </p>
+      {n >= 8 && (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>{shape.fields.map((f, i) => <th key={i}>{f}</th>)}</tr>
+            </thead>
+            <tbody>
+              <tr>{shape.rows[0].map((v, i) => <td key={i}>{cell(v)}</td>)}</tr>
+              <tr>{shape.fields.map((_, i) => <td key={i} className="muted">…</td>)}</tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function SqlSolve({ q }: { q: SqlQuestion }) {
   const [sql, setSql] = useState(() => answers.get()[q.id] ?? "-- Write your query on the shop dataset, then Check.\n");
@@ -63,6 +113,7 @@ export function SqlSolve({ q }: { q: SqlQuestion }) {
 
   return (
     <>
+      <Expected q={q} />
       <div className="solve">
         <aside className="panel solve-schema">
           <h4>shop tables</h4>
@@ -99,7 +150,7 @@ export function SqlSolve({ q }: { q: SqlQuestion }) {
               <span className="note-label">
                 <Lightbulb size={14} aria-hidden /> Hint
               </span>
-              <Markdown text={q.hint} />
+              <Rich md={q.hint} />
             </div>
           )}
           {verdict && (
@@ -112,7 +163,7 @@ export function SqlSolve({ q }: { q: SqlQuestion }) {
             <div className="reveal">
               <h3>Solution</h3>
               <CodeBlock code={q.solution} />
-              <p>{q.explanation}</p>
+              <Rich md={q.explanation} />
               <button className="btn ghost small" onClick={() => change(q.solution)}>Copy into the editor</button>
             </div>
           )}

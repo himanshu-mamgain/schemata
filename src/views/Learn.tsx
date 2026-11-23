@@ -6,6 +6,7 @@ import { PHASES, ROADMAP, stageById, type Stage } from "../content/roadmap";
 import { QUESTIONS, type Level } from "../content/questions";
 import { DATABASES, databaseById, type DatabaseGuide } from "../content/databases";
 import { CodeBlock } from "../components/CodeBlock";
+import { Lesson } from "../components/Lesson";
 import { EcoLinks } from "../components/AppSwitcher";
 import { draft, solved } from "../store";
 import { routes } from "../routes";
@@ -172,7 +173,7 @@ export function Roadmap() {
   );
 }
 
-function StagePage({ s }: { s: Stage }) {
+function StagePage({ s, lesson }: { s: Stage; lesson?: string }) {
   const done = solved.use();
   const openIn = useOpenInPlayground();
   const qs = QUESTIONS.filter((q) => q.stage === s.id);
@@ -184,20 +185,26 @@ function StagePage({ s }: { s: Stage }) {
       </p>
       <h1>{s.title}</h1>
       <p className="lead">{s.summary}</p>
-      <h3>What to learn</h3>
-      <ol className="concepts">
-        {s.concepts.map((c) => (
-          <li key={c}>{c}</li>
-        ))}
-      </ol>
-      <h3>Try it</h3>
-      <CodeBlock code={s.tryIt} />
-      <button className="btn primary" onClick={() => openIn(s.tryIt)}>
-        <Code2 size={16} /> Open in the editor
-      </button>
+      {lesson ? (
+        <Lesson md={lesson} />
+      ) : (
+        <>
+          <h3>What to learn</h3>
+          <ol className="concepts">
+            {s.concepts.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ol>
+          <h3>Try it</h3>
+          <CodeBlock code={s.tryIt} />
+          <button className="btn primary" onClick={() => openIn(s.tryIt)}>
+            <Code2 size={16} /> Open in the editor
+          </button>
+        </>
+      )}
       {qs.length > 0 && (
         <>
-          <h3>Practise</h3>
+          <h2 id="practise">Practise</h2>
           <QuestionList list={qs} done={done} />
         </>
       )}
@@ -399,9 +406,9 @@ export function RepoList({ repos }: { repos: { repo: string; why: string }[] }) 
   );
 }
 
-export function TopicPage({ id }: { id: string }) {
+export function TopicPage({ id, lesson }: { id: string; lesson?: string }) {
   const s = stageById(id);
-  if (s) return <StagePage s={s} />;
+  if (s) return <StagePage s={s} lesson={lesson} />;
   const d = databaseById(id);
   if (d) return <DatabasePage d={d} />;
   return (

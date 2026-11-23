@@ -6,7 +6,7 @@ import { Eye } from "lucide-react";
 import { questionById, QUESTIONS, type TheoryQuestion } from "../content/questions";
 import { stageById } from "../content/roadmap";
 import { EcoLinks } from "../components/AppSwitcher";
-import { Markdown } from "../components/Markdown";
+import { Rich } from "../components/Lesson";
 import { markSolved, solved } from "../store";
 import { routes } from "../routes";
 
@@ -38,7 +38,7 @@ export function QuestionPage({ id }: { id: string }) {
           <span key={t} className="tag">{t}</span>
         ))}
       </div>
-      <p className="prompt">{q.prompt}</p>
+      <div className="prompt"><Rich md={q.prompt} /></div>
       {q.kind === "sql" ? <SqlSolve key={q.id} q={q} /> : q.kind === "design" ? <DesignSolve key={q.id} q={q} /> : <TheoryReveal key={q.id} q={q} />}
       <EcoLinks refs={q.related} />
       {next && (
@@ -58,7 +58,7 @@ function TheoryReveal({ q }: { q: TheoryQuestion }) {
       {shown ? (
         <div className="reveal">
           <h3>Model answer</h3>
-          <Markdown text={q.answer} />
+          <Rich md={q.answer} />
         </div>
       ) : (
         <button
