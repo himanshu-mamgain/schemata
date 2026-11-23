@@ -89,3 +89,21 @@ describe.each(WALKTHROUGHS.map((w) => [w.id, w] as const))("step-through %s", (_
     }
   });
 });
+
+// Links inside questions (prompts, hints, answers, explanations) lead to lessons that exist.
+describe("question links", () => {
+  it("point at existing lessons and sections", () => {
+    for (const q of QUESTIONS) {
+      for (const [, href] of JSON.stringify(q).matchAll(/\]\((\/[^)\s]+)\)/g)) {
+        const [path, hash] = href.split("#");
+        const t = path.match(/^\/topics\/([\w-]+)$/);
+        const known = t ? TOPICS.some((x) => x.id === t[1]) : QUESTIONS.some((x) => `/questions/${x.id}` === path);
+        expect(known, `${q.id} → ${href}`).toBe(true);
+        if (t && hash) {
+          const target = lessons.find((l) => l.id === t[1]);
+          expect(target && sections(target.blocks).some((s) => s.id === hash), `${q.id} → ${href}`).toBe(true);
+        }
+      }
+    }
+  });
+});

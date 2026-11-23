@@ -534,6 +534,271 @@ function gapsIslands(): Walkthrough {
   };
 }
 
-export const WALKTHROUGHS: Walkthrough[] = [whereFilter(), nullCompare(), groupBy(), queryOrder(), join("inner"), join("left"), fanOut(), correlated(), recursive(), ranks(), runningTotal(), gapsIslands()];
+// ---------- B-tree index lookup ----------
+
+function btreeLookup(): Walkthrough {
+  const mine: [number, string][] = [
+    [113, "2025-01-10"],
+    [293, "2025-06-09"],
+    [473, "2025-11-06"],
+    [653, "2025-04-05"],
+    [833, "2025-09-02"],
+    [1013, "2025-01-30"],
+    [1193, "2025-06-29"],
+    [1373, "2025-11-26"],
+  ];
+  const sql = `SELECT id, order_date\nFROM orders\nWHERE customer_id = 42\nORDER BY id;`;
+  const root = (on: boolean): StepTable => ({
+    title: "root page",
+    columns: ["customer_id", "go to"],
+    rows: [
+      { cells: ["1 – 60", "page A"], state: on ? "match" : "idle" },
+      { cells: ["61 – 120", "page B"], state: on ? "dim" : "idle" },
+      { cells: ["121 – 180", "page C"], state: on ? "dim" : "idle" },
+    ],
+  });
+  const pageA = (on: boolean): StepTable => ({
+    title: "page A",
+    columns: ["customer_id", "go to"],
+    rows: [
+      { cells: ["1 – 20", "leaf 1"], state: on ? "dim" : "idle" },
+      { cells: ["21 – 40", "leaf 2"], state: on ? "dim" : "idle" },
+      { cells: ["41 – 60", "leaf 3"], state: on ? "match" : "idle" },
+    ],
+  });
+  const leaf = (on: boolean): StepTable => ({
+    title: "leaf 3",
+    columns: ["customer_id", "points at order"],
+    rows: [
+      { cells: [41, "…"], state: "dim" },
+      ...mine.map(([id]): StepRow => ({ cells: [42, id], state: on ? "match" : "idle" })),
+      { cells: [43, "…"], state: "dim" },
+    ],
+  });
+  return {
+    id: "btree-lookup",
+    title: "Finding customer 42 through a B-tree index",
+    sql,
+    frames: [
+      { caption: "orders_customer_idx keeps every customer_id sorted, each with a pointer to its order row, in a tree of pages. (Simplified: a real page holds hundreds of keys.)", clause: "WHERE customer_id = 42", tables: [root(false)] },
+      { caption: "Start at the root. 42 falls between 1 and 60, so follow the pointer to page A. One page read.", clause: "WHERE customer_id = 42", tables: [root(true)] },
+      { caption: "Page A narrows it down: 42 is between 41 and 60, so go to leaf 3. Two page reads.", clause: "WHERE customer_id = 42", tables: [root(true), pageA(true)] },
+      { caption: "Leaf 3 holds the keys themselves, in order. All of customer 42's entries sit next to each other: 8 of them. Three page reads so far.", clause: "WHERE customer_id = 42", tables: [pageA(true), leaf(true)] },
+      {
+        caption: "Each entry points at a row in the table, so Postgres reads just those 8 rows. Without the index, it would read all 1,500 orders and throw away 1,492.",
+        clause: "SELECT id, order_date",
+        tables: [leaf(true), { title: "Result", columns: ["id", "order_date"], rows: mine.map(([id, d]): StepRow => ({ cells: [id, d], state: "new" })) }],
+      },
+    ],
+    result: mine.map(([id, d]) => [id, d]),
+    ordered: true,
+  };
+}
+
+// ---------- Two transactions at once: a timeline ----------
+
+type Beat = [string, string, string, Cell];
+
+/** A timeline of two transactions, A and B, side by side, with the keyboard's stock after each step. */
+function timeline(id: string, title: string, sql: string, beats: Beat[], captions: string[], result: Cell[][], intro: string): Walkthrough {
+  const table = (upto: number): StepTable => ({
+    title: "time →",
+    columns: ["step", "transaction A", "transaction B", "stock"],
+    rows: beats.slice(0, upto + 1).map(([step, a, b, stock], i) => ({ cells: [step, a, b, stock], state: i === upto ? "active" : "idle" })),
+  });
+  return {
+    id,
+    title,
+    sql,
+    frames: [
+      { caption: intro, tables: [table(-1)] },
+      ...beats.map((_, i): Frame => ({ caption: captions[i], tables: [table(i)] })),
+      { caption: captions[beats.length], tables: [table(beats.length - 1), { title: "Result", columns: ["name", "stock"], rows: result.map((r): StepRow => ({ cells: r, state: "new" })) }] },
+    ],
+    result,
+    ordered: true,
+  };
+}
+
+function lostUpdate(): Walkthrough {
+  return timeline(
+    "lost-update",
+    "A lost update",
+    "-- What the two transactions end up doing, one after the other:\nUPDATE products SET stock = 119 WHERE id = 1;  -- A\nUPDATE products SET stock = 119 WHERE id = 1;  -- B\nSELECT name, stock FROM products WHERE id = 1;",
+    [
+      ["1", "SELECT stock → 120", "", 120],
+      ["2", "", "SELECT stock → 120", 120],
+      ["3", "app works out 120 − 1: UPDATE … SET stock = 119; COMMIT", "", 119],
+      ["4", "", "app works out 120 − 1: UPDATE … SET stock = 119; COMMIT", 119],
+    ],
+    [
+      "A (a customer buying a keyboard) reads the stock: 120.",
+      "At the same moment, B (another customer) reads it too: still 120. Neither has written yet.",
+      "A's app computes 120 − 1 = 119 and writes it.",
+      "B's app also computed 120 − 1 from what it read, and writes 119 over A's change.",
+      "Two keyboards were sold, but the stock went down by one: A's update is lost. Each step was correct on its own; reading, then writing a value worked out in the app, is the bug.",
+    ],
+    [["Mechanical Keyboard", 119]],
+    "Two people buy a Mechanical Keyboard (stock 120) at the same moment, through code that reads the stock, then writes the new value.",
+  );
+}
+
+function atomicUpdate(): Walkthrough {
+  return timeline(
+    "atomic-update",
+    "The fix: let the database do the arithmetic",
+    "UPDATE products SET stock = stock - 1 WHERE id = 1;  -- A\nUPDATE products SET stock = stock - 1 WHERE id = 1;  -- B\nSELECT name, stock FROM products WHERE id = 1;",
+    [
+      ["1", "UPDATE … SET stock = stock - 1 (row locked)", "", 119],
+      ["2", "", "UPDATE … SET stock = stock - 1: waits for A's lock", 119],
+      ["3", "COMMIT (lock released)", "", 119],
+      ["4", "", "goes ahead, reads the new 119, writes 118; COMMIT", 118],
+    ],
+    [
+      "A runs one statement that reads and writes together. Postgres locks the row while A's transaction is open: stock is 119 inside A.",
+      "B tries to update the same row and has to wait: the row is locked by A.",
+      "A commits and the lock is released.",
+      "B continues, and works from the committed value, 119. It writes 118.",
+      "Both sales count: 120 − 2 = 118. `stock = stock - 1` in one UPDATE (or SELECT … FOR UPDATE before reading) prevents the lost update at any isolation level.",
+    ],
+    [["Mechanical Keyboard", 118]],
+    "The same two purchases, but each one is a single UPDATE that subtracts 1 itself.",
+  );
+}
+
+function nonRepeatable(): Walkthrough {
+  return timeline(
+    "non-repeatable-read",
+    "Reading the same row twice (Read Committed)",
+    "UPDATE products SET stock = 100 WHERE id = 1;  -- B, committed\nSELECT name, stock FROM products WHERE id = 1;  -- A's second read",
+    [
+      ["1", "BEGIN; SELECT stock → 120", "", 120],
+      ["2", "", "UPDATE … SET stock = 100; COMMIT", 100],
+      ["3", "SELECT stock → 100", "", 100],
+    ],
+    [
+      "A starts a report and reads the keyboard's stock: 120.",
+      "B (a restock correction) sets it to 100 and commits.",
+      "Inside the same transaction, A reads it again and gets 100. At Read Committed, the Postgres default, each statement sees what was committed when that statement started.",
+      "That's a non-repeatable read. At Repeatable Read, A would see 120 both times: its whole transaction reads from one snapshot taken at its first query.",
+    ],
+    [["Mechanical Keyboard", 100]],
+    "Transaction A reads a row twice while B changes it in between.",
+  );
+}
+
+// ---------- Sharding by id % N: what moves when you add a shard ----------
+
+function shardMoves(): Walkthrough {
+  const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+  const sql = `SELECT id, id % 3 AS shard_of_3, id % 4 AS shard_of_4\nFROM customers\nWHERE id <= 8\nORDER BY id;`;
+  const table = (step: 0 | 1 | 2): StepTable => ({
+    title: "customers",
+    columns: ["id", "shard_of_3", "shard_of_4"],
+    rows: ids.map((id): StepRow => ({
+      cells: [id, id % 3, step >= 1 ? id % 4 : ""],
+      group: (step >= 1 ? id % 4 : id % 3) + 1,
+      state: step === 2 ? (id % 3 === id % 4 ? "keep" : "match") : "idle",
+      note: step === 2 ? (id % 3 === id % 4 ? "stays" : `moves: shard ${id % 3} → ${id % 4}`) : undefined,
+    })),
+  });
+  const moved = ids.filter((id) => id % 3 !== id % 4).length;
+  return {
+    id: "shard-moves",
+    title: "Adding a shard with id % N",
+    sql,
+    frames: [
+      { caption: "Customers are split over 3 shards (servers) by id % 3: the remainder after dividing by 3 picks the shard. Colours show the shard.", clause: "id % 3 AS shard_of_3", tables: [table(0)] },
+      { caption: "The data grows, so you add a 4th shard. Now the rule is id % 4.", clause: "id % 4 AS shard_of_4", tables: [table(1)] },
+      {
+        caption: `Every row whose remainder changed must be copied to another server: ${moved} of these ${ids.length}. Over all 203 customers it's 153, or 75%. Consistent hashing moves only about a quarter (the share the new shard takes over).`,
+        tables: [{ ...table(2), title: "Result" }],
+      },
+    ],
+    result: ids.map((id) => [id, id % 3, id % 4]),
+    ordered: true,
+  };
+}
+
+// ---------- Many-to-many through a junction table ----------
+
+function junction(): Walkthrough {
+  const sql = `CREATE TABLE tags (id int PRIMARY KEY, name text NOT NULL UNIQUE);\nCREATE TABLE product_tags (\n  product_id int REFERENCES products(id),\n  tag_id     int REFERENCES tags(id),\n  PRIMARY KEY (product_id, tag_id)\n);\nINSERT INTO tags VALUES (1, 'gift'), (2, 'bestseller');\nINSERT INTO product_tags VALUES (1, 2), (6, 1), (6, 2);\n\nSELECT p.name, string_agg(t.name, ', ' ORDER BY t.name) AS tags\nFROM products p\nJOIN product_tags pt ON pt.product_id = p.id\nJOIN tags t ON t.id = pt.tag_id\nGROUP BY p.name\nORDER BY p.name;`;
+  const products = (hl: number[]): StepTable => ({
+    title: "products",
+    columns: ["id", "name"],
+    rows: [
+      [1, "Mechanical Keyboard"],
+      [6, "Designing Data-Intensive Applications"],
+      [9, "Clean Code"],
+    ].map(([id, n]): StepRow => ({ cells: [id, n], state: hl.includes(id as number) ? "match" : "idle" })),
+  });
+  const tags = (hl: number[]): StepTable => ({ title: "tags", columns: ["id", "name"], rows: [[1, "gift"], [2, "bestseller"]].map(([id, n]): StepRow => ({ cells: [id, n], state: hl.includes(id as number) ? "match" : "idle" })) });
+  const pairs = (active: number): StepTable => ({
+    title: "product_tags",
+    columns: ["product_id", "tag_id"],
+    rows: [
+      [1, 2],
+      [6, 1],
+      [6, 2],
+    ].map(([a, b], i): StepRow => ({ cells: [a, b], state: i === active ? "active" : "idle" })),
+  });
+  return {
+    id: "many-to-many",
+    title: "Many-to-many through a junction table",
+    sql,
+    frames: [
+      { caption: "Products and tags are separate tables. A product can have many tags, and a tag can be on many products.", clause: "CREATE TABLE tags", tables: [products([]), tags([])] },
+      { caption: "The junction table product_tags holds one row per pair. Its primary key is the pair, so a product can't get the same tag twice.", clause: "PRIMARY KEY (product_id, tag_id)", tables: [pairs(-1)] },
+      { caption: "Pair (1, 2): product 1, the Mechanical Keyboard, has tag 2, bestseller.", clause: "JOIN product_tags pt ON pt.product_id = p.id", tables: [products([1]), pairs(0), tags([2])] },
+      { caption: "Pairs (6, 1) and (6, 2): product 6 has both tags. Clean Code has no pairs, so the inner joins leave it out.", clause: "JOIN tags t ON t.id = pt.tag_id", tables: [products([6]), pairs(2), tags([1, 2])] },
+      {
+        caption: "GROUP BY the product and string_agg its tag names: one row per tagged product.",
+        clause: "string_agg(t.name, ', ' ORDER BY t.name)",
+        tables: [{ title: "Result", columns: ["name", "tags"], rows: [{ cells: ["Designing Data-Intensive Applications", "bestseller, gift"], state: "new" }, { cells: ["Mechanical Keyboard", "bestseller"], state: "new" }] }],
+      },
+    ],
+    result: [
+      ["Designing Data-Intensive Applications", "bestseller, gift"],
+      ["Mechanical Keyboard", "bestseller"],
+    ],
+    ordered: true,
+  };
+}
+
+// ---------- MVCC: row versions ----------
+
+function mvcc(): Walkthrough {
+  const sql = "-- B's update, then what a new transaction reads:\nUPDATE products SET stock = stock - 1 WHERE id = 1;\nSELECT name, stock FROM products WHERE id = 1;";
+  const versions = (rows: [Cell, Cell, Cell, Cell, Cell][], active: number): StepTable => ({
+    title: "versions of product 1 on the page",
+    columns: ["version", "stock", "xmin (made by)", "xmax (replaced by)", "seen by A"],
+    rows: rows.map((r, i): StepRow => ({ cells: r, state: i === active ? "new" : r[3] !== 0 ? "dim" : "idle" })),
+  });
+  return {
+    id: "mvcc-versions",
+    title: "MVCC: an update writes a new version",
+    sql,
+    frames: [
+      { caption: "Product 1 has one version, created by transaction 100. xmax is 0: nobody has replaced it.", tables: [versions([["v1", 120, 100, 0, "yes"]], -1)] },
+      { caption: "Transaction A (id 101) starts a long report. Its snapshot sees every version committed before it began: v1.", tables: [versions([["v1", 120, 100, 0, "yes"]], 0)] },
+      {
+        caption: "Transaction B (id 102) sells a keyboard. It doesn't overwrite v1: it writes v2 with stock 119, and marks v1 as replaced by 102.",
+        clause: "UPDATE products SET stock = stock - 1 WHERE id = 1;",
+        tables: [versions([["v1", 120, 100, 102, "yes"], ["v2", 119, 102, 0, "no: made after A began"]], 1)],
+      },
+      { caption: "B commits. A is still running, and still reads 120 from v1: readers never wait for writers. Any transaction starting now reads v2.", tables: [versions([["v1", 120, 100, 102, "yes"], ["v2", 119, 102, 0, "no"]], -1)] },
+      {
+        caption: "When A ends, no snapshot needs v1 any more. It's a dead tuple: VACUUM will free its space. A new query reads 119.",
+        clause: "SELECT name, stock FROM products WHERE id = 1;",
+        tables: [versions([["v1 (dead)", 120, 100, 102, "A has finished"], ["v2", 119, 102, 0, "—"]], -1), { title: "Result", columns: ["name", "stock"], rows: [{ cells: ["Mechanical Keyboard", 119], state: "new" }] }],
+      },
+    ],
+    result: [["Mechanical Keyboard", 119]],
+    ordered: true,
+  };
+}
+
+export const WALKTHROUGHS: Walkthrough[] = [whereFilter(), nullCompare(), groupBy(), queryOrder(), join("inner"), join("left"), fanOut(), correlated(), recursive(), ranks(), runningTotal(), gapsIslands(), btreeLookup(), lostUpdate(), atomicUpdate(), nonRepeatable(), shardMoves(), junction(), mvcc()];
 
 export const walkthroughById = (id: string) => WALKTHROUGHS.find((w) => w.id === id);
