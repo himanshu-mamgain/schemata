@@ -18,6 +18,8 @@ export function cell(v: unknown): string {
 }
 
 const rowKey = (row: unknown[]) => row.map(cell).join("␟");
+/** One of your rows, as it reads in a message: (Asha Rao, 250000). */
+const showRow = (row: unknown[]) => `(${row.map(cell).join(", ")})`;
 
 /**
  * Compares your last result set with the expected one. Column names are ignored
@@ -37,13 +39,28 @@ export function compare(actual: QueryResult | undefined, expected: QueryResult, 
     const i = a.findIndex((k, idx) => k !== e[idx]);
     if (i === -1) return { ok: true, message: "Correct, including row order." };
     const sameSet = [...a].sort().join("\n") === [...e].sort().join("\n");
-    return { ok: false, message: sameSet ? "Right rows, wrong order: check your ORDER BY." : `Row ${i + 1} differs from the expected result.` };
+    if (sameSet) return { ok: false, message: "Right rows, wrong order: check your ORDER BY (and how it breaks ties)." };
+    const stray = actual.rows.find((r) => !e.includes(rowKey(r)));
+    return {
+      ok: false,
+      message: stray
+        ? `This row of yours isn't in the expected result: ${showRow(stray)}. Check the filter, the join and the calculation.`
+        : `Row ${i + 1} differs from the expected result: yours is ${showRow(actual.rows[i])}.`,
+    };
   }
   const counts = new Map<string, number>();
   for (const k of e) counts.set(k, (counts.get(k) ?? 0) + 1);
-  for (const k of a) {
+  for (const [i, k] of a.entries()) {
     const c = counts.get(k);
-    if (!c) return { ok: false, message: "Some rows differ from the expected result." };
+    if (!c) {
+      const extra = e.includes(k);
+      return {
+        ok: false,
+        message: extra
+          ? `You have ${showRow(actual.rows[i])} more times than expected: look for a join that repeats rows, or a missing DISTINCT or GROUP BY.`
+          : `This row of yours isn't in the expected result: ${showRow(actual.rows[i])}. Check the filter, the join and the calculation.`,
+      };
+    }
     counts.set(k, c - 1);
   }
   return { ok: true, message: "Correct." };
