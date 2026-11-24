@@ -6,6 +6,7 @@ import { PHASES, ROADMAP, stageById, type Stage } from "../content/roadmap";
 import { QUESTIONS, type Level } from "../content/questions";
 import { DATABASES, databaseById, type DatabaseGuide } from "../content/databases";
 import { CodeBlock } from "../components/CodeBlock";
+import { CopyLink } from "../components/CopyLink";
 import { ReadAloud } from "../components/ReadAloud";
 import { Lesson } from "../components/Lesson";
 import { EcoLinks } from "../components/AppSwitcher";
@@ -74,6 +75,7 @@ export function Home() {
           <A to={routes.roadmap} className="btn">
             <MapIcon size={16} /> The roadmap
           </A>
+          <CopyLink />
         </div>
       </section>
 
@@ -145,6 +147,7 @@ export function Roadmap() {
     <div>
       <LearnSwitch />
       <h1>Roadmap</h1>
+      <CopyLink className="btn page-copy" />
       <p className="lead">From your first query to how databases work inside. Each stage links to its interview questions.</p>
       {PHASES.map((phase) => (
         <section key={phase} className="phase">
@@ -186,7 +189,10 @@ function StagePage({ s, lesson }: { s: Stage; lesson?: string }) {
       </p>
       <h1>{s.title}</h1>
       <p className="lead">{s.summary}</p>
-      <ReadAloud />
+      <div className="page-actions">
+        <ReadAloud />
+        <CopyLink />
+      </div>
       {lesson ? (
         <Lesson md={lesson} />
       ) : (
@@ -247,6 +253,7 @@ export function Questions() {
   return (
     <div>
       <h1>Interview questions{s ? `: ${s.title}` : ""}</h1>
+      <CopyLink className="btn page-copy" />
       <p className="lead">
         SQL questions run on the built-in shop dataset and are checked against the expected result. Design questions are schemas you draw in DBML.
         Theory questions are the ones interviewers ask out loud.
@@ -279,6 +286,7 @@ export function Databases() {
     <div>
       <LearnSwitch />
       <h1>Database guide</h1>
+      <CopyLink className="btn page-copy" />
       <p className="lead">Every database is a set of trade-offs. Start with Postgres; reach for the others when an access pattern demands it.</p>
       <div className="db-grid">
         {DATABASES.map((d) => (
@@ -332,6 +340,7 @@ function DatabasePage({ d }: { d: DatabaseGuide }) {
         <A to={routes.databases}>Databases</A> · {d.family}
       </p>
       <h1>{d.name}</h1>
+      <CopyLink className="btn page-copy" />
       <p className="lead">{d.tagline}</p>
       <p>{d.model}</p>
       <div className="two-col">

@@ -7,6 +7,7 @@ import { questionById, QUESTIONS, type TheoryQuestion } from "../content/questio
 import { stageById } from "../content/roadmap";
 import { EcoLinks } from "../components/AppSwitcher";
 import { Rich } from "../components/Lesson";
+import { CopyLink } from "../components/CopyLink";
 import { ReadAloud } from "../components/ReadAloud";
 import { answers, markSolved, saveAnswer, solved } from "../store";
 import { routes } from "../routes";
@@ -39,7 +40,10 @@ export function QuestionPage({ id }: { id: string }) {
           <span key={t} className="tag">{t}</span>
         ))}
       </div>
-      {q.kind === "theory" && <ReadAloud />}
+      <div className="page-actions">
+        {q.kind === "theory" && <ReadAloud />}
+        <CopyLink />
+      </div>
       <div className="prompt"><Rich md={q.prompt} /></div>
       {q.kind === "sql" ? <SqlSolve key={q.id} q={q} /> : q.kind === "design" ? <DesignSolve key={q.id} q={q} /> : <TheoryReveal key={q.id} q={q} />}
       <EcoLinks refs={q.related} />

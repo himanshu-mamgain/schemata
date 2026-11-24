@@ -1,3 +1,4 @@
+import { CopyLink } from "../components/CopyLink";
 import { DATASETS } from "../db/datasets";
 import Link from "next/link";
 import { LearnSwitch, RepoList } from "./Learn";
@@ -28,6 +29,7 @@ export function Sources() {
     <div>
       <LearnSwitch />
       <h1>Data sources</h1>
+      <CopyLink className="btn page-copy" />
       <p className="lead">The datasets behind the editor, and more open-source ones to practise on.</p>
       <h2>In the editor</h2>
       <ul className="repos">
