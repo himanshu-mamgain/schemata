@@ -9,6 +9,8 @@ export interface SchemataData {
   version: 1;
   /** Question id → when you first solved it (ISO time). */
   solved: Record<string, string>;
+  /** Roadmap stage id → when you marked its lesson read (ISO time). Missing in copies saved before it existed. */
+  lessonsRead?: Record<string, string>;
   /** Question id → your SQL, and when you last changed it (epoch ms). */
   answers: Record<string, { text: string; at: number }>;
   /** Design question id → your DBML, and when you last changed it. */
@@ -32,9 +34,14 @@ function newer(local: Edited, remote: Edited): Edited {
 
 /** Combines this device's data with the account's, so neither loses work. */
 export function mergeSchemata(local: SchemataData, remote: SchemataData, now = Date.now()): SchemataData {
-  // Solved stays solved: keep the first time from either device.
-  const solved = { ...local.solved };
-  for (const [id, at] of Object.entries(remote.solved)) if (!solved[id] || at < solved[id]) solved[id] = at;
+  // Solved stays solved, and read stays read: keep the first time from either device.
+  const first = (a: Record<string, string> = {}, b: Record<string, string> = {}) => {
+    const out = { ...a };
+    for (const [id, at] of Object.entries(b)) if (!out[id] || at < out[id]) out[id] = at;
+    return out;
+  };
+  const solved = first(local.solved, remote.solved);
+  const lessonsRead = first(local.lessonsRead, remote.lessonsRead);
 
   const deletedQueries: Record<string, number> = {};
   for (const [id, at] of [...Object.entries(local.deletedQueries), ...Object.entries(remote.deletedQueries)]) {
@@ -49,7 +56,7 @@ export function mergeSchemata(local: SchemataData, remote: SchemataData, now = D
     .filter((q) => !((deletedQueries[q.id] ?? -1) >= Date.parse(q.savedAt)))
     .sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : a.id < b.id ? -1 : 1)); // newest first, as the playground lists them
 
-  return { version: 1, solved, answers: newer(local.answers, remote.answers), designs: newer(local.designs, remote.designs), savedQueries, deletedQueries };
+  return { version: 1, solved, lessonsRead, answers: newer(local.answers, remote.answers), designs: newer(local.designs, remote.designs), savedQueries, deletedQueries };
 }
 
 /** JSON with sorted keys, so two copies with the same content compare equal. */

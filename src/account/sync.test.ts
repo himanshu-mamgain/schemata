@@ -55,3 +55,15 @@ describe("the device's copy (localStorage stores)", () => {
     stop();
   });
 });
+
+describe("lessons read", () => {
+  it("keeps every lesson read on either device, with the earliest time, and reads old copies without the field", () => {
+    const T = Date.parse("2026-11-24T10:00:00Z");
+    const iso = (t: number) => new Date(t).toISOString();
+    const old = data();
+    delete old.lessonsRead;
+    const m = mergeSchemata(data({ lessonsRead: { joins: iso(T + 5), basics: iso(T) } }), data({ lessonsRead: { joins: iso(T + 1) } }), T);
+    expect(m.lessonsRead).toEqual({ joins: iso(T + 1), basics: iso(T) });
+    expect(mergeSchemata(old, data({ lessonsRead: { basics: iso(T) } }), T).lessonsRead).toEqual({ basics: iso(T) });
+  });
+});

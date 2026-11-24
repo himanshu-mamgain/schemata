@@ -10,7 +10,7 @@ import { CopyLink } from "../components/CopyLink";
 import { ReadAloud } from "../components/ReadAloud";
 import { Lesson } from "../components/Lesson";
 import { EcoLinks } from "../components/AppSwitcher";
-import { draft, solved } from "../store";
+import { draft, lessonsRead, solved } from "../store";
 import { routes } from "../routes";
 
 /** Opens a query in the SQL editor (the editor reads it from the saved draft). */
@@ -194,7 +194,10 @@ function StagePage({ s, lesson }: { s: Stage; lesson?: string }) {
         <CopyLink />
       </div>
       {lesson ? (
-        <Lesson md={lesson} />
+        <>
+          <Lesson md={lesson} />
+          <LessonRead id={s.id} />
+        </>
       ) : (
         <>
           <h3>What to learn</h3>
@@ -222,6 +225,24 @@ function StagePage({ s, lesson }: { s: Stage; lesson?: string }) {
         {i < ROADMAP.length - 1 && <A to={routes.topic(ROADMAP[i + 1].id)}>{ROADMAP[i + 1].title} →</A>}
       </p>
     </article>
+  );
+}
+
+/** "I've read this lesson": the Studia daily plan ticks the lesson off from it (synced). */
+function LessonRead({ id }: { id: string }) {
+  const at = lessonsRead.use()[id];
+  if (at)
+    return (
+      <p className="lesson-read is-done">
+        <CheckCircle2 size={18} aria-hidden /> Read on {new Date(at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+      </p>
+    );
+  return (
+    <p className="lesson-read">
+      <button type="button" className="btn primary" onClick={() => lessonsRead.set({ ...lessonsRead.get(), [id]: new Date().toISOString() })}>
+        <CheckCircle2 size={16} aria-hidden /> I&apos;ve read this lesson
+      </button>
+    </p>
   );
 }
 

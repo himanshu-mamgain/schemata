@@ -1954,3 +1954,15 @@ tbody tr:hover {
 .copy-link.is-copied svg {
   color: #1c8a49;
 }
+
+/* "I've read this lesson" (Learn.tsx): what the Studia daily plan ticks lessons off from. */
+.lesson-read {
+  margin: 24px 0 8px;
+}
+.lesson-read.is-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1c8a49;
+  font-weight: 600;
+}
