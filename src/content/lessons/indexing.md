@@ -127,10 +127,55 @@ EXPLAIN SELECT order_date FROM big_orders WHERE customer_id = 42 ORDER BY order_
 | a date, any customer | **Seq Scan** | dates are only in order *inside* each customer: like finding every "Priya" in a surname-sorted phone book |
 | customer 42's 3 latest dates | `Index Only Scan Backward`, no Sort | read the end of customer 42's section backwards; the index holds both columns, so the table isn't touched |
 
-This is the **leftmost-prefix rule**: an index on `(a, b, c)` helps queries that filter on `a`, or `a` and `b`, or all three, but not on `b` alone.
+This is the **leftmost-prefix rule**: an index on `(a, b, c)` helps queries that filter on `a`, or `a` and `b`, or all three, but not on `b` alone (Postgres 18 sometimes can, with a skip scan: see below).
 
 - Put columns tested with `=` first, and the range or sort column (`>=`, `ORDER BY`) last.
 - One index on `(customer_id, order_date)` also serves `WHERE customer_id = ?` alone, so you don't need a second index on `customer_id`.
+- The order of the conditions in `WHERE` doesn't matter: `c = 3 AND a = 7` is the same query as `a = 7 AND c = 3`. Only the order of the columns in the index does.
+
+### Skipping a column: `a` and `c` on an `(a, b, c)` index
+
+What if a query filters on `a` and `c`, but not `b`? This table has 200,000 rows: `a` has 20 values, `b` 100 and `c` 100. The index is on `(a, b, c)`:
+
+```sql
+CREATE TABLE t AS
+SELECT i AS id, i % 20 AS a, (i / 20) % 100 AS b, (i / 2000) % 100 AS c
+FROM generate_series(0, 199999) AS i;
+CREATE INDEX t_abc ON t (a, b, c);
+ANALYZE t;
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t WHERE a = 7 AND b = 42 AND c = 3;
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t WHERE a = 7 AND c = 3;
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t WHERE b = 42 AND c = 3;
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t WHERE c = 3;
+```
+
+Add up `hit` and `read` on the top `Buffers` line of each plan to get the pages it read (the whole table is 1,088 pages):
+
+| Query | How the `(a, b, c)` index is used | Pages read |
+| --- | --- | --- |
+| `a = 7 AND b = 42 AND c = 3` | jumps straight to the 1 matching row | 4 |
+| `a = 7 AND c = 3` | jumps to the start of `a = 7`, then reads all 10,000 of its entries and checks `c` on each. Only the 100 matches touch the table | 56 |
+| `b = 42 AND c = 3` | **skip scan**: one search for each value of `a` (`Index Searches: 22`) | 68 |
+| `c = 3` | not used: `Seq Scan` | 1,088 |
+
+- **`a` and `c`**: the index still helps, but only `a` decides where to start. Inside `a = 7`, the entries are sorted by `b` first, so the `c = 3` entries are spread across all 100 values of `b`. `c` is checked inside the index, so rows that fail it cost no table reads.
+- **No `a` at all**: Postgres 17 and older usually can't use the index. **Skip scan**, new in Postgres 18, searches once for each value of `a`: `(0, 42, 3)`, `(1, 42, 3)` … It pays off only when `a` has few values, like these 20.
+- **A range on a middle column works like a gap.** In `a = 7 AND b > 50 AND c = 3`, `c` is only checked, never used to jump.
+
+If `a` and `c` together is a common query, give it an index that starts with both:
+
+```sql
+CREATE TABLE t AS
+SELECT i AS id, i % 20 AS a, (i / 20) % 100 AS b, (i / 2000) % 100 AS c
+FROM generate_series(0, 199999) AS i;
+CREATE INDEX t_acb ON t (a, c, b);
+ANALYZE t;
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT * FROM t WHERE a = 7 AND c = 3;
+```
+
+15 pages instead of 56: 3 index pages to reach `(7, 3)`, then the 12 table pages that hold the 100 rows.
 
 ## Covering, partial and expression indexes
 
@@ -152,9 +197,74 @@ Other index types, for other kinds of data:
 
 ## What indexes cost
 
-Every index is updated on every `INSERT`, on every `UPDATE` of its columns, and on every `DELETE`. Each one also takes disk space and memory: in the first example, the index on 200,000 customer ids is 2.4 MB, next to an 8.5 MB table: more than a quarter of its size, for one column.
+In Postgres, each kind of write treats indexes differently:
+
+- An `INSERT` adds an entry to **every** index on the table.
+- An `UPDATE` writes a new version of the row (see [MVCC](/topics/internals#mvcc-vacuum-and-bloat)). Unless it's a **HOT update** (explained in [internals](/topics/internals#hot-updates-and-fillfactor)), every index gets a new entry, even the indexes on columns that didn't change.
+- A `DELETE` doesn't touch the indexes at once. The row is only marked dead, and VACUUM removes its index entries later.
+
+This inserts the same 50,000 rows into a table with no indexes, then into one with three, and measures how much the database had to write to its log:
+
+```sql
+CREATE TABLE mark AS SELECT pg_current_wal_insert_lsn() AS lsn;
+CREATE TABLE no_index (id int, a int, b text, c date);
+INSERT INTO no_index
+SELECT i, i % 1000, md5(i::text), DATE '2025-01-01' + i % 365 FROM generate_series(1, 50000) AS i;
+SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_insert_lsn(), (SELECT lsn FROM mark))) AS written_with_no_index;
+
+CREATE TABLE three_indexes (id int, a int, b text, c date);
+CREATE INDEX ON three_indexes (a);
+CREATE INDEX ON three_indexes (b);
+CREATE INDEX ON three_indexes (c);
+UPDATE mark SET lsn = pg_current_wal_insert_lsn();
+INSERT INTO three_indexes
+SELECT i, i % 1000, md5(i::text), DATE '2025-01-01' + i % 365 FROM generate_series(1, 50000) AS i;
+SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_insert_lsn(), (SELECT lsn FROM mark))) AS written_with_three;
+```
+
+About 5 MB without indexes, about 18 MB with three: more than three times the writing for the same rows. (`pg_current_wal_insert_lsn()` is the position in the write-ahead log, Postgres's record of every change; see [internals](/topics/internals#the-write-ahead-log-checkpoints-and-crash-recovery).)
+
+Each index also takes disk space and memory: in the first example, the index on 200,000 customer ids is 2.4 MB, next to an 8.5 MB table: more than a quarter of its size, for one column.
 
 So add indexes for the queries you actually run, check with `EXPLAIN` that they're used, and drop the ones that aren't (`pg_stat_user_indexes` shows how often each is used). A table with 15 indexes writes slowly.
+
+## When an index makes a query slower
+
+Adding an index can make things worse. The four usual reasons:
+
+**1. A worse plan for `ORDER BY … LIMIT`.** A shop logs 200,000 events, one a minute. The last 2,000 are refunds. The newest 5 refunds, before and after an index on `created_at`:
+
+```sql
+CREATE TABLE events AS
+SELECT i AS id,
+       TIMESTAMP '2025-01-01' + i * INTERVAL '1 minute' AS created_at,
+       CASE WHEN i > 198000 THEN 'refund' ELSE 'sale' END AS kind
+FROM generate_series(1, 200000) AS i;
+ANALYZE events;
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT * FROM events WHERE kind = 'refund' ORDER BY created_at LIMIT 5;
+
+CREATE INDEX events_created ON events (created_at);
+
+EXPLAIN (ANALYZE, BUFFERS, COSTS OFF, TIMING OFF, SUMMARY OFF)
+SELECT * FROM events WHERE kind = 'refund' ORDER BY created_at LIMIT 5;
+```
+
+| | Plan | Rows looked at | Pages read |
+| --- | --- | --- | --- |
+| No index | `Seq Scan`, then a top-5 sort | 200,000 | 1,280 |
+| Index on `created_at` | `Index Scan` in date order, stopping at 5 refunds | 198,005 (`Rows Removed by Filter: 198000`) | 1,805 |
+
+The planner knows refunds are 1% of rows, and assumes they're spread evenly. So it expects 5 refunds within the first 500 or so events in date order, and walking the index looks cheap. But every refund is at the end. It walks almost the whole index, then reads the table in index order, and reads more pages than before. The fix is an index that matches the whole query: `CREATE INDEX ON events (kind, created_at)` goes straight to the first refund and reads 4 pages.
+
+**2. Slower writes.** Every new index adds work to every insert, and to most updates (the measurement above). A table that takes many writes and few reads may be better off with fewer indexes.
+
+**3. No more HOT updates.** An index on a column you update all the time (`stock`, `updated_at`, `view_count`) turns every update of that column into a full update of every index on the table. See [HOT updates](/topics/internals#hot-updates-and-fillfactor).
+
+**4. Wrong estimates.** After a big change to the data, the statistics are out of date, and the planner may use the index for a filter that now matches half the table. Reading many rows through an index means jumping around the table, which costs more than reading it in order. Run `ANALYZE`, and compare estimated and actual rows in `EXPLAIN ANALYZE`.
+
+To find which it is, run `EXPLAIN (ANALYZE, BUFFERS)` with and without the index (on a copy, or inside a transaction you roll back), and compare the pages read.
 
 ## Join algorithms
 
@@ -205,6 +315,8 @@ The first reads 150,020 rows to return 20. The second, **keyset pagination**, re
 
 > ⚠️ **Deep `OFFSET` pages**: page 5,000 reads 100,000 rows. Use keyset pagination.
 
+> ⚠️ **Adding an index without measuring**: it can make a query slower (an `ORDER BY … LIMIT` that walks the wrong index) and every write heavier. Check `EXPLAIN (ANALYZE, BUFFERS)` before and after.
+
 ## Interview questions
 
 **Q: How does an index make a query faster, and when doesn't it?**
@@ -218,6 +330,14 @@ A B-tree keeps the column sorted in a shallow tree, so a lookup reads 3–4 page
 **Q: A query is slow. What do you do?**
 
 Run `EXPLAIN ANALYZE` and find the node where most time goes. Look for a Seq Scan on a big table with a selective filter (add an index), estimates far from actual rows (run `ANALYZE`), a big Sort (an index in that order can remove it), or a nested loop over many rows. Fix one thing, then measure again.
+
+**Q: You have an index on `(a, b, c)` and query `WHERE a = ? AND c = ?`. Is the index used?**
+
+Yes, but only `a` decides where to start: Postgres reads all of `a`'s entries and checks `c` on each, inside the index. Without `a`, older Postgres versions can't use it; Postgres 18's skip scan can, when `a` has few values. If `a` and `c` is a common query, index `(a, c, b)` or `(a, c)`.
+
+**Q: A query got slower after you added an index. Why?**
+
+Most often the planner chose the new index for an `ORDER BY … LIMIT`, expecting matches early, and had to walk most of it. Or the statistics are stale, or the index removed HOT updates and made writes heavier. Compare `EXPLAIN (ANALYZE, BUFFERS)` with and without it, and index the whole query: `(filter column, sort column)`.
 
 **Q: OFFSET pagination is slow on page 1000. Why, and what instead?**
 

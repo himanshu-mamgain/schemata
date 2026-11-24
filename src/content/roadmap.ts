@@ -55,9 +55,15 @@ export const ROADMAP: Stage[] = [
     tryIt: "-- How is the shop modelled? Every foreign key:\nSELECT tc.table_name, kcu.column_name, ccu.table_name AS references_table\nFROM information_schema.table_constraints tc\nJOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name\nJOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name\nWHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'shop';",
   },
   {
+    id: "views-functions", phase: "Intermediate", title: "Views, functions and triggers",
+    summary: "Keep queries, results and code inside the database: views, materialized views, functions, procedures and triggers.",
+    concepts: ["Views: a saved query, and what they're good for", "Materialized views: a saved result, REFRESH and REFRESH CONCURRENTLY", "Functions in SQL and PL/pgSQL; RETURNS TABLE", "IMMUTABLE, STABLE and VOLATILE, and indexes on functions", "Procedures: CALL, INOUT, and COMMIT inside a procedure", "Function vs procedure", "Triggers: BEFORE and AFTER, row and statement, OLD and NEW", "When to use a constraint, a trigger or app code"],
+    tryIt: "CREATE VIEW customer_spend AS\nSELECT c.id, c.name, SUM(oi.quantity * oi.unit_price) AS spent\nFROM customers c\nJOIN orders o ON o.customer_id = c.id AND o.status = 'delivered'\nJOIN order_items oi ON oi.order_id = o.id\nGROUP BY c.id, c.name;\n\nSELECT * FROM customer_spend ORDER BY spent DESC LIMIT 5;",
+  },
+  {
     id: "indexing", phase: "Advanced", title: "Indexes and query plans",
     summary: "Make queries fast and know why they are slow.",
-    concepts: ["How a B-tree index works", "EXPLAIN and EXPLAIN ANALYZE: Seq Scan, Index Scan, Bitmap Scan", "Join algorithms: nested loop, hash join, merge join", "Composite indexes and the leftmost-prefix rule", "Covering indexes (INCLUDE), partial and expression indexes", "GIN for JSONB and full-text, BRIN for huge append-only tables", "The cost of indexes on writes", "N+1 queries, keyset pagination vs OFFSET"],
+    concepts: ["How a B-tree index works", "EXPLAIN and EXPLAIN ANALYZE: Seq Scan, Index Scan, Bitmap Scan", "Join algorithms: nested loop, hash join, merge join", "Composite indexes and the leftmost-prefix rule; skipping a column and skip scan", "Covering indexes (INCLUDE), partial and expression indexes", "GIN for JSONB and full-text, BRIN for huge append-only tables", "The cost of indexes on writes", "When an index makes a query slower", "N+1 queries, keyset pagination vs OFFSET"],
     tryIt: "EXPLAIN ANALYZE\nSELECT * FROM orders WHERE customer_id = 42;\n\n-- Then try a column without an index:\n-- EXPLAIN ANALYZE SELECT * FROM orders WHERE status = 'pending';",
     related: [{ app: "dsa-atlas", pattern: "Trees" }, { app: "dsa-atlas", pattern: "Binary Search" }, { app: "structura", topic: "query-cache" }],
   },
@@ -85,7 +91,7 @@ export const ROADMAP: Stage[] = [
   {
     id: "internals", phase: "Expert", title: "How databases work inside",
     summary: "Pages, trees, logs and versions: what happens under every query.",
-    concepts: ["Pages and the buffer pool", "B+ trees vs LSM trees", "Write-ahead log (WAL), checkpoints and crash recovery", "MVCC, VACUUM and bloat", "Query planning: statistics, selectivity, cost model", "Two-phase commit, Raft and leader election", "Build your own: CMU BusTub"],
+    concepts: ["Pages and the buffer pool", "B+ trees vs LSM trees", "Write-ahead log (WAL), checkpoints and crash recovery", "MVCC, VACUUM and bloat", "HOT updates and fillfactor; MySQL's undo log", "How a query runs: parser, analyzer, rewriter, planner, executor", "Query planning: statistics, selectivity, and how a cost is calculated", "Two-phase commit, Raft and leader election", "Build your own: CMU BusTub"],
     tryIt: "-- Postgres keeps a hidden row version for MVCC:\nSELECT xmin, xmax, ctid, id, name FROM products LIMIT 5;",
     related: [{ app: "dsa-atlas", pattern: "Trees" }, { app: "dsa-atlas", pattern: "Heap / Priority Queue" }, { app: "structura", topic: "leader-election" }],
   },

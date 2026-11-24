@@ -87,6 +87,110 @@ The cost: old versions (**dead tuples**) take space until **VACUUM** marks it re
 
 The classic cause: a transaction left open for hours (an idle session that ran `BEGIN` and never finished). VACUUM can't remove any version that transaction might still need to see, anywhere in the database. Find them in `pg_stat_activity` with `state = 'idle in transaction'`.
 
+## HOT updates and fillfactor
+
+A new row version needs index entries too: each index points at the row's exact place, its `ctid`. So an `UPDATE` that changes one column could mean a new entry in every index on the table. That's why people say "Postgres duplicates every row you update".
+
+A **HOT update** (heap-only tuple) avoids it. When two things are true:
+
+1. no indexed column changes, and
+2. the new version fits on the **same page** as the old one,
+
+Postgres writes the new version on that page and links the old version to it. The indexes keep pointing at the old place and follow the link. No index is touched.
+
+`pg_stat_xact_user_tables` counts the updates in the current transaction, and how many were HOT. `stock` has no index, so all 15 are HOT:
+
+```sql
+CREATE TEMP TABLE seen AS
+SELECT n_tup_upd AS upd, n_tup_hot_upd AS hot FROM pg_stat_xact_user_tables WHERE relname = 'products';
+
+UPDATE products SET stock = stock + 1;
+
+SELECT s.n_tup_upd - seen.upd AS updates, s.n_tup_hot_upd - seen.hot AS hot_updates
+FROM pg_stat_xact_user_tables s, seen
+WHERE s.relname = 'products';
+```
+
+Now index `stock` and run the same update: 15 updates, **0** HOT. Every update now adds an entry to both indexes (the primary key's and the new one), though only `stock` changed:
+
+```sql
+CREATE INDEX products_stock_idx ON products (stock);
+CREATE TEMP TABLE seen AS
+SELECT n_tup_upd AS upd, n_tup_hot_upd AS hot FROM pg_stat_xact_user_tables WHERE relname = 'products';
+
+UPDATE products SET stock = stock + 1;
+
+SELECT s.n_tup_upd - seen.upd AS updates, s.n_tup_hot_upd - seen.hot AS hot_updates
+FROM pg_stat_xact_user_tables s, seen
+WHERE s.relname = 'products';
+```
+
+The second condition needs free space on the page. **fillfactor** sets how full Postgres packs a table's pages when inserting: 100% by default, so pages start full. Leaving room lets updates stay on their page:
+
+```sql
+CREATE TABLE full_pages  (id int, counter int, pad text);
+CREATE TABLE roomy_pages (id int, counter int, pad text) WITH (fillfactor = 70);
+INSERT INTO full_pages  SELECT i, 0, repeat('x', 100) FROM generate_series(1, 20000) AS i;
+INSERT INTO roomy_pages SELECT i, 0, repeat('x', 100) FROM generate_series(1, 20000) AS i;
+CREATE INDEX ON full_pages (id);
+CREATE INDEX ON roomy_pages (id);
+
+UPDATE full_pages  SET counter = counter + 1;
+UPDATE roomy_pages SET counter = counter + 1;
+
+SELECT relname, n_tup_upd AS updates, n_tup_hot_upd AS hot_updates,
+       pg_size_pretty(pg_relation_size(relid)) AS table_size
+FROM pg_stat_xact_user_tables
+WHERE relname IN ('full_pages', 'roomy_pages')
+ORDER BY relname;
+```
+
+| Table | Updates | HOT | Why |
+| --- | --- | --- | --- |
+| `full_pages` (fillfactor 100) | 20,000 | 0 | every page was full: each new version went to another page, with a new index entry |
+| `roomy_pages` (fillfactor 70) | 20,000 | 9,000 | 30% of each page was free, so many new versions stayed home |
+
+The price of fillfactor 70 is a bigger table from the start. Use it on tables whose rows are updated often, and keep indexes off columns that change all the time.
+
+### How MySQL does it instead
+
+MySQL's InnoDB engine takes the opposite approach:
+
+| | Postgres | MySQL (InnoDB) |
+| --- | --- | --- |
+| Where the new version goes | a new copy of the row in the table | the row is changed **in place** |
+| Where the old version goes | stays in the table until VACUUM | copied to the **undo log**, a separate store of old versions |
+| A reader who needs the old version | reads the old copy directly | rebuilds it from the undo log |
+| Indexes point to | the row's physical place (`ctid`) | the primary key, so other indexes don't change when the row moves |
+| Cleaning up | VACUUM | a purge thread deletes undo records nobody needs |
+| What a long transaction costs | dead rows pile up in the table (bloat) | the undo log grows |
+
+Neither is free: both keep old versions for as long as some transaction might read them. Postgres makes updates simple and rollbacks instant (the old row is still there); InnoDB keeps tables compact but makes old reads slower.
+
+## How a query runs: parser, rewriter, planner, executor
+
+Every query goes through the same five stages:
+
+| Stage | What it does | If something's wrong |
+| --- | --- | --- |
+| **Parser** | checks the grammar and builds a parse tree | *syntax error at or near "FORM"* |
+| **Analyzer** | looks up every table, column and function name, and their types | *column "nme" does not exist* |
+| **Rewriter** | replaces each view with its query (and applies rules and row-level security policies) | |
+| **Planner** | picks the cheapest way to run it: which indexes, which join order, which join algorithm | |
+| **Executor** | runs the plan: each node pulls rows from the nodes below it, a row at a time | runtime errors: *division by zero* |
+
+The first two catch typos before any data is read:
+
+```sql error
+SELECT name FORM products;
+```
+
+```sql error
+SELECT nme FROM products;
+```
+
+The rewriter is why a view costs nothing extra: by the time the planner sees the query, the view's name is gone and its query is in its place (see [views](/topics/views-functions#views-a-saved-query)). `EXPLAIN` shows the planner's choice; `EXPLAIN ANALYZE` also runs the executor.
+
 ## Query planning: statistics, selectivity and cost
 
 For each query, the **planner** considers possible plans (seq scan or index, which join order, which join algorithm) and picks the one with the lowest estimated **cost**. It can't run them all to see, so it estimates from **statistics** that `ANALYZE` collects: for each column, the share of NULLs, the number of distinct values, the most common values and how often each appears.
@@ -98,6 +202,42 @@ WHERE schemaname = 'shop' AND tablename = 'orders' AND attname = 'status';
 ```
 
 `status` has 3 values: delivered 80% of rows, cancelled 10%, pending 10%. So for `WHERE status = 'pending'` the planner estimates 1,500 × 0.1 = 150 rows: its **selectivity** is 0.1. Run `EXPLAIN` and you'll see `rows=150`.
+
+### How a cost is calculated
+
+A plan's **cost** is an estimate in made-up units, built from a few settings. One page read in order costs 1:
+
+```sql
+SELECT name, setting
+FROM pg_settings
+WHERE name IN ('seq_page_cost', 'random_page_cost', 'cpu_tuple_cost', 'cpu_index_tuple_cost', 'cpu_operator_cost')
+ORDER BY name;
+```
+
+| Setting | Default | Cost of |
+| --- | --- | --- |
+| `seq_page_cost` | 1 | reading a page in order |
+| `random_page_cost` | 4 | reading a page by jumping to it, as an index scan does |
+| `cpu_tuple_cost` | 0.01 | handling one row |
+| `cpu_index_tuple_cost` | 0.005 | handling one index entry |
+| `cpu_operator_cost` | 0.0025 | one comparison, such as `status = 'pending'` |
+
+`orders` has 10 pages and 1,500 rows. Work out a sequential scan by hand, then check it against `EXPLAIN`:
+
+```sql
+SELECT relpages, reltuples FROM pg_class WHERE relname = 'orders';
+EXPLAIN SELECT * FROM orders;
+EXPLAIN SELECT * FROM orders WHERE status = 'pending';
+```
+
+| Plan | Calculation | Cost |
+| --- | --- | --- |
+| Read every row | 10 pages × 1 + 1,500 rows × 0.01 | 10 + 15 = **25.00** |
+| … and test `status = 'pending'` on each | 25 + 1,500 comparisons × 0.0025 | 25 + 3.75 = **28.75** |
+
+`EXPLAIN` prints `cost=0.00..25.00` and `cost=0.00..28.75`: the same numbers. The first number is the cost before the first row comes out (0 here: a scan starts at once). The planner works out a cost like this for every plan it considers, using its row estimates, and runs the cheapest.
+
+`random_page_cost` = 4 is why an index loses when it would fetch many rows: each row it fetches may mean jumping to another page, at 4 times the price of reading pages in order. On fast SSDs (solid-state drives), many teams lower it to 1.1, which makes the planner choose indexes more often.
 
 Estimates go wrong when columns are related. The planner assumes conditions are independent, and multiplies:
 
@@ -142,6 +282,8 @@ The best way to really learn this is to build a small database. **CMU's BusTub**
 
 > ⚠️ **Turning off `fsync` for speed**: commits stop waiting for the WAL to reach disk, and a crash can corrupt the database.
 
+> ⚠️ **Indexing a column that's updated all the time**: every update loses HOT and writes to every index. Leave such columns unindexed if you can, and lower the table's fillfactor.
+
 ## Interview questions
 
 **Q: How does Postgres survive a crash without losing committed data?**
@@ -155,6 +297,14 @@ Updates write new row versions instead of overwriting, and each transaction read
 **Q: Why would the planner choose a bad plan?**
 
 Its row estimates are wrong: statistics are stale (run `ANALYZE`), or columns are correlated and it multiplied their selectivities as if they were independent (use `CREATE STATISTICS`). Compare estimated and actual rows in `EXPLAIN ANALYZE` to find the node where they part ways.
+
+**Q: Why does an update in Postgres sometimes write to every index, and how do you avoid it?**
+
+An update writes a new version of the row, at a new place, and indexes point at places. A HOT update avoids touching the indexes when no indexed column changes and the new version fits on the same page. So keep indexes off columns you update often, and leave free space on pages with a lower fillfactor.
+
+**Q: How does Postgres pick between a sequential scan and an index scan?**
+
+It estimates a cost for each plan from row estimates and a few settings: 1 per page read in order, 4 per page read by jumping (`random_page_cost`), and small amounts per row and per comparison. A sequential scan of `orders` costs 10 pages × 1 + 1,500 rows × 0.01 = 25. It runs whichever plan is cheapest, so wrong row estimates lead to wrong choices.
 
 **Q: B-tree or LSM tree for a write-heavy event log?**
 
