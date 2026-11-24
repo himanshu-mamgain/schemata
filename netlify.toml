@@ -76,6 +76,13 @@
   force = true
 
 # DSA Atlas and Structura read this list to link to Schemata topics.
+# The lessons and questions in order, for the Studia site's daily plan (src/app/plan.json).
+[[headers]]
+  for = "/plan.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=3600"
+
 [[headers]]
   for = "/topics.json"
   [headers.values]
