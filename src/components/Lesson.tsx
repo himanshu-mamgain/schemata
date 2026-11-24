@@ -6,6 +6,7 @@ import { Code2, Play } from "lucide-react";
 import { parseLesson, sections, type Block } from "../content/lessonFormat";
 import { CodeBlock } from "./CodeBlock";
 import { StepPlayer } from "./StepPlayer";
+import { ErdBlock } from "./ErdBlock";
 import type { QueryResult } from "../db/engine";
 import { ResultsPanel } from "./Results";
 import { draft } from "../store";
@@ -120,6 +121,8 @@ function BlockView({ b }: { b: Block }) {
       );
     case "steps":
       return <StepPlayer id={b.id} />;
+    case "erd":
+      return <ErdBlock dbml={b.dbml} highlight={b.highlight} />;
     case "code":
       return b.run === "no" ? <CodeBlock code={b.code} language={b.lang === "sql" ? "pgsql" : b.lang} /> : <SqlExample code={b.code} fails={b.run === "error"} />;
   }

@@ -11,6 +11,7 @@
  *   ```sql norun             SQL shown only (it changes things for good, or needs other tables)
  *   ```sql error             an example that fails on purpose; Run shows the error
  *   ```steps join-left      a step-through player (content/steps.ts), with an empty body
+ *   ```erd a,b               DBML drawn as an ER diagram (tables a and b highlighted)
  *   ```text, ```json …       plain code
  *   **bold**, *italic*, `code`, [text](/questions/x)
  */
@@ -23,7 +24,8 @@ export type Block =
   | { type: "table"; head: string[]; rows: string[][] }
   | { type: "callout"; emoji: string; lines: string[] }
   | { type: "code"; lang: string; code: string; run: "yes" | "no" | "error" }
-  | { type: "steps"; id: string };
+  | { type: "steps"; id: string }
+  | { type: "erd"; dbml: string; highlight: string[] };
 
 export const slug = (text: string) =>
   text
@@ -62,6 +64,12 @@ export function parseLesson(md: string): Block[] {
       const flag = fence[2];
       if (lang === "steps") {
         blocks.push({ type: "steps", id: flag });
+        continue;
+      }
+      if (lang === "erd") {
+        // ```erd orders,customers  draws the DBML below as an ER diagram, those tables highlighted.
+        const highlight = t.replace(/^```erd\s*/, "").split(",").map((x) => x.trim()).filter(Boolean);
+        blocks.push({ type: "erd", dbml: body.join("\n"), highlight });
         continue;
       }
       blocks.push({ type: "code", lang, code: body.join("\n"), run: lang !== "sql" || flag === "norun" ? "no" : flag === "error" ? "error" : "yes" });
