@@ -1,4 +1,4 @@
-import { answers, deletedQueries, designs, edited, fromYourAccount, savedQueries, solved } from "../store";
+import { answers, deletedQueries, designs, edited, fromYourAccount, lessonsRead, savedQueries, solved } from "../store";
 import type { SchemataData } from "./merge";
 
 // Reads and writes the part of localStorage that syncs with your Studia account (merge.ts).
@@ -12,6 +12,7 @@ export function snapshot(): SchemataData {
   return {
     version: 1,
     solved: solved.get(),
+    lessonsRead: lessonsRead.get(),
     answers: withTimes(answers.get(), "answer", times),
     designs: withTimes(designs.get(), "design", times),
     savedQueries: savedQueries.get(),
@@ -26,6 +27,7 @@ export function applySnapshot(next: SchemataData) {
   for (const [id, d] of Object.entries(next.designs)) times[`design:${id}`] = d.at;
   fromYourAccount(() => {
     solved.set(next.solved);
+    lessonsRead.set(next.lessonsRead ?? {});
     answers.set(Object.fromEntries(Object.entries(next.answers).map(([id, a]) => [id, a.text])));
     designs.set(Object.fromEntries(Object.entries(next.designs).map(([id, d]) => [id, d.text])));
     edited.set(times);

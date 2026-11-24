@@ -74,6 +74,9 @@ export function markSolved(id: string) {
 }
 
 /** Your draft answer per question, so leaving the page doesn't lose it. */
+/** Roadmap stage id → when you marked its lesson read (ISO time). The Studia plan ticks lessons off from it. */
+export const lessonsRead = createStore<Record<string, string>>("schemata:lessons-read", {}, { synced: true });
+
 export const answers = createStore<Record<string, string>>("schemata:answers", {}, { synced: true });
 
 /** Your DBML draft per design question. */
