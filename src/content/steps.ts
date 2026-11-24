@@ -799,6 +799,133 @@ function mvcc(): Walkthrough {
   };
 }
 
-export const WALKTHROUGHS: Walkthrough[] = [whereFilter(), nullCompare(), groupBy(), queryOrder(), join("inner"), join("left"), fanOut(), correlated(), recursive(), ranks(), runningTotal(), gapsIslands(), btreeLookup(), lostUpdate(), atomicUpdate(), nonRepeatable(), shardMoves(), junction(), mvcc()];
+// ---------- A materialized view goes stale until it's refreshed ----------
+
+function matviewRefresh(): Walkthrough {
+  const sql = `CREATE MATERIALIZED VIEW category_revenue AS
+SELECT p.category, SUM(oi.quantity * oi.unit_price) AS revenue
+FROM orders o
+JOIN order_items oi ON oi.order_id = o.id
+JOIN products p ON p.id = oi.product_id
+WHERE o.status = 'delivered'
+GROUP BY p.category;
+
+UPDATE orders SET status = 'cancelled' WHERE id = 22;
+REFRESH MATERIALIZED VIEW category_revenue;
+SELECT category, revenue FROM category_revenue ORDER BY revenue DESC;`;
+  const before: [string, number][] = [["Electronics", 16323250], ["Furniture", 15198750], ["Books", 2758150], ["Grocery", 1153850]];
+  const order22 = 4 * 24999 + 1999; // Standing Desk × 4 and Desk Lamp × 1, all furniture
+  const after = before.map(([c, r]): [string, number] => [c, c === "Furniture" ? r - order22 : r]);
+  const stored = (rows: [string, number][], furniture?: Partial<StepRow>): StepTable => ({
+    title: "category_revenue (stored rows)",
+    columns: ["category", "revenue"],
+    rows: rows.map(([c, r]): StepRow => ({ cells: [c, r.toFixed(2)], ...(c === "Furniture" ? furniture : {}) })),
+  });
+  const order = (state: RowState, status: string): StepTable => ({
+    title: "orders",
+    columns: ["id", "status", "items"],
+    rows: [{ cells: [22, status, "Standing Desk × 4, Desk Lamp × 1"], state }],
+  });
+  return {
+    id: "matview-refresh",
+    title: "A materialized view, before and after REFRESH",
+    sql,
+    frames: [
+      {
+        caption: "CREATE MATERIALIZED VIEW runs the query once and stores its 4 rows on disk, like a table. Reading it later is as fast as reading 4 rows.",
+        clause: "CREATE MATERIALIZED VIEW category_revenue AS",
+        tables: [stored(before)],
+      },
+      {
+        caption: `Order 22 is cancelled. It held ₹${order22.toLocaleString("en-US")} of furniture, so real furniture revenue drops. The stored rows don't change: nothing tells the materialized view.`,
+        clause: "UPDATE orders SET status = 'cancelled' WHERE id = 22;",
+        tables: [order("drop", "delivered → cancelled"), stored(before, { state: "dim", note: "stale: still counts order 22" })],
+      },
+      {
+        caption: "A plain view would already show the new number, because it runs its query every time it's read. The materialized view keeps serving the old one, quickly.",
+        tables: [stored(before, { state: "dim", note: "stale" }), { title: "the same query, run now", columns: ["category", "revenue"], rows: [{ cells: ["Furniture", (before[1][1] - order22).toFixed(2)], state: "match" }] }],
+      },
+      {
+        caption: "REFRESH MATERIALIZED VIEW runs the query again and replaces the stored rows. Add CONCURRENTLY (it needs a unique index) and readers can keep reading the old rows meanwhile.",
+        clause: "REFRESH MATERIALIZED VIEW category_revenue;",
+        tables: [stored(after, { state: "new", note: `${before[1][1].toFixed(2)} → ${(before[1][1] - order22).toFixed(2)}` })],
+      },
+      {
+        caption: "Now it's right again, until the next change. How stale it may get is your choice: refresh every hour, every night, or after the changes that matter.",
+        clause: "SELECT category, revenue FROM category_revenue ORDER BY revenue DESC;",
+        tables: [{ title: "Result", columns: ["category", "revenue"], rows: after.map(([c, r]): StepRow => ({ cells: [c, r.toFixed(2)], state: "new" })) }],
+      },
+    ],
+    result: after.map(([c, r]) => [c, r.toFixed(2)]),
+    ordered: true,
+  };
+}
+
+// ---------- One INSERT through its triggers ----------
+
+function triggerFlow(): Walkthrough {
+  const sql = `CREATE FUNCTION fill_unit_price() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.unit_price IS NULL THEN
+    SELECT price INTO NEW.unit_price FROM products WHERE id = NEW.product_id;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER order_items_fill_price
+BEFORE INSERT ON order_items
+FOR EACH ROW EXECUTE FUNCTION fill_unit_price();
+
+CREATE FUNCTION take_stock() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE products SET stock = stock - NEW.quantity WHERE id = NEW.product_id;
+  RETURN NULL;
+END $$;
+CREATE TRIGGER order_items_take_stock
+AFTER INSERT ON order_items
+FOR EACH ROW EXECUTE FUNCTION take_stock();
+
+INSERT INTO orders VALUES (2001, 1, '2025-12-01', 'pending');
+INSERT INTO order_items (order_id, product_id, quantity) VALUES (2001, 10, 2);
+SELECT oi.quantity, oi.unit_price, p.stock
+FROM order_items oi JOIN products p ON p.id = oi.product_id
+WHERE oi.order_id = 2001;`;
+  const row = (price: Cell, state: RowState, note?: string): StepTable => ({ title: "NEW (the row being inserted)", columns: ["order_id", "product_id", "quantity", "unit_price"], rows: [{ cells: [2001, 10, 2, price], state, note }] });
+  const desk = (stock: number, state: RowState, note?: string): StepTable => ({ title: "products", columns: ["id", "name", "price", "stock"], rows: [{ cells: [10, "Standing Desk", "24999.00", stock], state, note }] });
+  return {
+    id: "trigger-flow",
+    title: "One INSERT through its triggers",
+    sql,
+    frames: [
+      {
+        caption: "The app inserts an order line for 2 Standing Desks, and leaves out the price. Postgres holds the new row in a record called NEW.",
+        clause: "INSERT INTO order_items (order_id, product_id, quantity) VALUES (2001, 10, 2);",
+        tables: [row(null, "active", "unit_price is NULL"), desk(12, "idle")],
+      },
+      {
+        caption: "BEFORE INSERT triggers run first, and may change NEW. fill_unit_price looks up the desk's price and puts it in the row.",
+        clause: "BEFORE INSERT ON order_items",
+        tables: [row("24999.00", "new", "filled in by the trigger"), desk(12, "match", "price read")],
+      },
+      {
+        caption: "Only now are the constraints checked (unit_price is NOT NULL: it passes, thanks to the trigger) and the row is written to the table.",
+        tables: [row("24999.00", "keep", "written")],
+      },
+      {
+        caption: "AFTER INSERT triggers run once the row is in. take_stock subtracts 2 from the desk's stock. AFTER triggers can't change the row any more; they react to it.",
+        clause: "AFTER INSERT ON order_items",
+        tables: [row("24999.00", "idle"), desk(10, "new", "12 − 2")],
+      },
+      {
+        caption: "All of it is one statement inside one transaction: if the stock update had failed (say, a CHECK that stock can't go below 0), the order line would be undone too.",
+        clause: "WHERE oi.order_id = 2001;",
+        tables: [{ title: "Result", columns: ["quantity", "unit_price", "stock"], rows: [{ cells: [2, "24999.00", 10], state: "new" }] }],
+      },
+    ],
+    result: [[2, "24999.00", 10]],
+    ordered: true,
+  };
+}
+
+export const WALKTHROUGHS: Walkthrough[] = [whereFilter(), nullCompare(), groupBy(), queryOrder(), join("inner"), join("left"), fanOut(), correlated(), recursive(), ranks(), runningTotal(), gapsIslands(), btreeLookup(), lostUpdate(), atomicUpdate(), nonRepeatable(), shardMoves(), junction(), mvcc(), matviewRefresh(), triggerFlow()];
 
 export const walkthroughById = (id: string) => WALKTHROUGHS.find((w) => w.id === id);
