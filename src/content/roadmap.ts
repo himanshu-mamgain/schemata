@@ -61,6 +61,12 @@ export const ROADMAP: Stage[] = [
     tryIt: "CREATE VIEW customer_spend AS\nSELECT c.id, c.name, SUM(oi.quantity * oi.unit_price) AS spent\nFROM customers c\nJOIN orders o ON o.customer_id = c.id AND o.status = 'delivered'\nJOIN order_items oi ON oi.order_id = o.id\nGROUP BY c.id, c.name;\n\nSELECT * FROM customer_spend ORDER BY spent DESC LIMIT 5;",
   },
   {
+    id: "app-to-database", phase: "Intermediate", title: "From app to database",
+    summary: "ORMs, mappers and validators: what each one does between your code and your tables, N+1 queries and SQL injection.",
+    concepts: ["Validators (Zod) at the edge, constraints in the database", "Mappers and DTOs: rows into API responses", "ORMs (Sequelize, Prisma, Hibernate): models, relations, migrations", "N+1 queries and eager loading", "Parameters vs string building: SQL injection", "ORM, query builder or plain SQL"],
+    tryIt: "-- The N+1 fix: every order's items in one query\nSELECT order_id, product_id, quantity, unit_price\nFROM order_items\nWHERE order_id = ANY (ARRAY[5, 185, 365])\nORDER BY order_id, product_id;",
+  },
+  {
     id: "indexing", phase: "Advanced", title: "Indexes and query plans",
     summary: "Make queries fast and know why they are slow.",
     concepts: ["How a B-tree index works", "EXPLAIN and EXPLAIN ANALYZE: Seq Scan, Index Scan, Bitmap Scan", "Join algorithms: nested loop, hash join, merge join", "Composite indexes and the leftmost-prefix rule; skipping a column and skip scan", "Covering indexes (INCLUDE), partial and expression indexes", "GIN for JSONB and full-text, BRIN for huge append-only tables", "The cost of indexes on writes", "When an index makes a query slower", "N+1 queries, keyset pagination vs OFFSET"],
