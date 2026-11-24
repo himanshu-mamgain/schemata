@@ -107,3 +107,18 @@ describe("question links", () => {
     }
   });
 });
+
+// Every ```erd diagram, in lessons and in answers, is DBML the parser accepts.
+describe("ER diagrams", () => {
+  it("parse", async () => {
+    const { parseDbml } = await import("../erd/model");
+    const texts = [...lessons.map((l) => l.blocks), ...QUESTIONS.map((q) => parseLesson("answer" in q ? q.answer : ""))];
+    const erds = texts.flat().filter((b): b is Extract<typeof b, { type: "erd" }> => b.type === "erd");
+    expect(erds.length).toBeGreaterThan(0);
+    for (const b of erds) {
+      const { model, errors } = parseDbml(b.dbml);
+      expect(errors.map((e) => e.message), b.dbml.slice(0, 60)).toEqual([]);
+      for (const t of b.highlight) expect(model!.tables.some((x) => x.name === t), t).toBe(true);
+    }
+  });
+});
