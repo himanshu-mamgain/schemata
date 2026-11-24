@@ -6,6 +6,7 @@ import { PHASES, ROADMAP, stageById, type Stage } from "../content/roadmap";
 import { QUESTIONS, type Level } from "../content/questions";
 import { DATABASES, databaseById, type DatabaseGuide } from "../content/databases";
 import { CodeBlock } from "../components/CodeBlock";
+import { ReadAloud } from "../components/ReadAloud";
 import { Lesson } from "../components/Lesson";
 import { EcoLinks } from "../components/AppSwitcher";
 import { draft, solved } from "../store";
@@ -185,6 +186,7 @@ function StagePage({ s, lesson }: { s: Stage; lesson?: string }) {
       </p>
       <h1>{s.title}</h1>
       <p className="lead">{s.summary}</p>
+      <ReadAloud />
       {lesson ? (
         <Lesson md={lesson} />
       ) : (

@@ -1929,3 +1929,11 @@ tbody tr:hover {
 .erd-block {
   margin: 14px 0 18px;
 }
+
+/* Read aloud: the phone's own voice reads the page. */
+.read-aloud {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
