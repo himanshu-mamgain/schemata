@@ -6,7 +6,7 @@ import { Pause, Play, Square, Volume2 } from "lucide-react";
 // phones, and nothing leaves the device.
 
 const SKIP =
-  'pre, code, table, svg, canvas, button, nav, figure, details, textarea, .crumbs, .tags, .read-aloud, .qlist, .next, .eco, .erd-block, .react-flow, .steps, .cm-editor, .monaco-editor, [aria-hidden="true"], [data-no-read]';
+  'pre, code, table, svg, canvas, button, nav, figure, details, textarea, .crumbs, .tags, .read-aloud, .page-actions, .copy-link, .qlist, .next, .eco, .erd-block, .react-flow, .steps, .cm-editor, .monaco-editor, [aria-hidden="true"], [data-no-read]';
 const READ = "h1, h2, h3, h4, p, li, blockquote, dt, dd";
 
 export function readableText(root: HTMLElement): string {

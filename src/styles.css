@@ -1937,3 +1937,20 @@ tbody tr:hover {
   flex-wrap: wrap;
   margin: 4px 0 16px;
 }
+
+/* Copy link (CopyLink.tsx) and Read aloud, side by side under a lesson's or question's title. */
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+.page-actions .read-aloud {
+  margin: 0;
+}
+.page-copy {
+  margin: 0 0 12px;
+}
+.copy-link.is-copied svg {
+  color: #1c8a49;
+}
