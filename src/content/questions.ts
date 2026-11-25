@@ -233,6 +233,48 @@ export const QUESTIONS: Question[] = [
     explanation: "The < condition both removes self-pairs and counts each pair once. This is the core of market-basket analysis.",
   },
 
+  // ---------- CASE WHEN ----------
+  {
+    kind: "sql", id: "salary-bands", title: "Salary bands", level: "easy", stage: "basics", tags: ["CASE WHEN"],
+    prompt: "Put every employee in a salary band: `high` when the salary is 150000 or more, `mid` when it's 100000 or more (but under 150000), and `low` otherwise. Return three columns: `name`, `salary` and the band. Any row order.",
+    hint: "CASE WHEN … THEN … WHEN … THEN … ELSE … END. The first WHEN that is true wins, so check the biggest band first.",
+    solution: "SELECT name, salary,\n       CASE WHEN salary >= 150000 THEN 'high'\n            WHEN salary >= 100000 THEN 'mid'\n            ELSE 'low'\n       END AS band\nFROM employees;",
+    ordered: false,
+    explanation: "CASE checks its WHENs from top to bottom and stops at the first true one. A salary of 160000 is also >= 100000, but it never gets that far. That's why the second WHEN doesn't need `AND salary < 150000`.",
+  },
+  {
+    kind: "sql", id: "custom-category-order", title: "Products in shop order", level: "easy", stage: "basics", tags: ["CASE WHEN", "ORDER BY"],
+    prompt: "The shop shows categories in its own order, not A to Z: Electronics first, then Books, then Grocery, then everything else. Inside each category, the cheapest product comes first. Return three columns: `name`, `category` and `price`, in that order.",
+    hint: "You can ORDER BY a CASE expression: turn each category into a number (1, 2, 3, 4) and sort by that number, then by price.",
+    solution: "SELECT name, category, price\nFROM products\nORDER BY CASE category\n           WHEN 'Electronics' THEN 1\n           WHEN 'Books' THEN 2\n           WHEN 'Grocery' THEN 3\n           ELSE 4\n         END,\n         price;",
+    ordered: true,
+    explanation: "ORDER BY accepts any expression, not just a column. Mapping values to numbers with CASE is the usual way to sort by a business order: priorities (urgent, high, low), statuses, or sizes (S, M, L, XL).",
+  },
+  {
+    kind: "sql", id: "status-counts-per-city", title: "Delivered and cancelled orders per city", level: "medium", stage: "aggregation", tags: ["CASE WHEN", "conditional aggregation"],
+    prompt: "For each customer city, count the orders that were delivered and the orders that were cancelled, side by side. Return three columns: `city`, the number of delivered orders and the number of cancelled orders. A city with no cancelled orders must show 0, not NULL. Any row order.",
+    hint: "One GROUP BY city, with SUM(CASE WHEN status = '…' THEN 1 ELSE 0 END) for each count. Watch what SUM gives when every value is NULL.",
+    solution: "SELECT c.city,\n       SUM(CASE WHEN o.status = 'delivered' THEN 1 ELSE 0 END) AS delivered,\n       SUM(CASE WHEN o.status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled\nFROM customers c\nJOIN orders o ON o.customer_id = c.id\nGROUP BY c.city;",
+    ordered: false,
+    explanation: "This is **conditional aggregation**: one pass over the rows, with a CASE inside each SUM deciding which rows count. Without `ELSE 0`, a city with no cancelled orders sums only NULLs, and SUM of only NULLs is NULL, not 0. `COUNT(CASE WHEN … THEN 1 END)` also works, because COUNT skips NULLs and gives 0. Postgres has a shorter form: `COUNT(*) FILTER (WHERE status = 'cancelled')`.",
+  },
+  {
+    kind: "sql", id: "bonus-rules", title: "Bonus rules in the right order", level: "medium", stage: "basics", tags: ["CASE WHEN", "NULL"],
+    prompt: "Work out each employee's bonus with these rules, checked in this order: (1) an employee with no department (`department_id` is NULL) gets 0; (2) anyone else earning 150000 or more gets 20% of their salary; (3) anyone else in Engineering (`department_id` = 1) gets 10%; (4) everyone else gets 5%. Return two columns: `name` and the bonus as a whole number. Any row order.",
+    hint: "Put the WHENs in the same order as the rules. NULL needs IS NULL, not = NULL. Use salary * 20 / 100 to stay in whole numbers.",
+    solution: "SELECT name,\n       CASE WHEN department_id IS NULL THEN 0\n            WHEN salary >= 150000 THEN salary * 20 / 100\n            WHEN department_id = 1 THEN salary * 10 / 100\n            ELSE salary * 5 / 100\n       END AS bonus\nFROM employees;",
+    ordered: false,
+    explanation: "The rules overlap: Asha Rao earns 250000 and is in Engineering, so rules 2 and 3 both fit her. The first true WHEN wins, so she gets 20% (50000), not 10%. Ananya Ghosh has no department: `department_id = 1` is UNKNOWN for her, not false, so without rule 1 she would fall through to the ELSE and get 5%. Writing `CASE department_id WHEN NULL THEN 0` doesn't work either, because that form compares with =, and = NULL is never true.",
+  },
+  {
+    kind: "sql", id: "quarterly-pivot", title: "Revenue by category and quarter", level: "hard", stage: "aggregation", tags: ["CASE WHEN", "pivot"],
+    prompt: "Make a table with one row per product category and one column per quarter of the year. Count only delivered orders; an order line's revenue is `quantity * unit_price` from `order_items`. A quarter is three months: January to March is quarter 1, and so on. Return five columns: `category`, then the revenue for quarters 1, 2, 3 and 4. Sort by category from A to Z.",
+    hint: "Join order_items, orders and products. EXTRACT(QUARTER FROM order_date) gives 1 to 4. Then one SUM(CASE WHEN quarter = n THEN revenue ELSE 0 END) per column.",
+    solution: "SELECT p.category,\n       SUM(CASE WHEN EXTRACT(QUARTER FROM o.order_date) = 1 THEN oi.quantity * oi.unit_price ELSE 0 END) AS q1,\n       SUM(CASE WHEN EXTRACT(QUARTER FROM o.order_date) = 2 THEN oi.quantity * oi.unit_price ELSE 0 END) AS q2,\n       SUM(CASE WHEN EXTRACT(QUARTER FROM o.order_date) = 3 THEN oi.quantity * oi.unit_price ELSE 0 END) AS q3,\n       SUM(CASE WHEN EXTRACT(QUARTER FROM o.order_date) = 4 THEN oi.quantity * oi.unit_price ELSE 0 END) AS q4\nFROM order_items oi\nJOIN orders o ON o.id = oi.order_id\nJOIN products p ON p.id = oi.product_id\nWHERE o.status = 'delivered'\nGROUP BY p.category\nORDER BY p.category;",
+    ordered: true,
+    explanation: "Turning rows into columns is called a **pivot**. Standard SQL has no PIVOT keyword (SQL Server and Oracle do), so the portable way is one SUM(CASE …) per column. The WHERE filter runs before grouping, so cancelled and pending orders never reach the sums. Interviewers ask this often, as \"monthly sales per product as columns\".",
+  },
+
   // ---------- Theory ----------
   {
     kind: "theory", id: "acid", title: "What does ACID mean?", level: "easy", stage: "transactions", tags: ["ACID"],
