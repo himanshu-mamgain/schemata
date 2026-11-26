@@ -311,4 +311,60 @@ Table booked_seats {
       "Double-booking is prevented by a constraint, not by application code. booked_seats has a primary key on (show_id, seat_id), so when two people race for the same seat the second INSERT fails with a unique violation, even under concurrency. show_id is copied onto booked_seats (it's also on bookings) precisely so the constraint can include it. A trigger or composite foreign key should also make sure the seat is on the show's screen.",
     related: [{ app: "structura", topic: "locking" }],
   },
+  {
+    kind: "design",
+    id: "design-url-shortener",
+    title: "Design: a URL shortener",
+    level: "medium",
+    stage: "modelling",
+    tags: ["unique keys", "one-to-many", "composite primary key", "indexes"],
+    prompt:
+      "Design the database for a URL shortener. A user can create many short links, but links can also be created anonymously. Each short code must identify exactly one destination. The service also stores daily click totals for each link.",
+    requirements: [
+      "Users, with an optional owner for each URL (anonymous links are allowed)",
+      "URLs: a unique short code, original destination, creation time and optional expiry",
+      "Daily click totals for each URL, with at most one row per URL per day",
+      "Primary keys and foreign keys that keep the relationships valid",
+    ],
+    starter: "Table users {\n  id bigint [pk]\n  email varchar [unique]\n}\n\nTable urls {\n  id bigint [pk]\n  short_code varchar [not null, unique]\n}\n",
+    checks: [
+      check.table(["urls"], "There is a URLs table"),
+      check.table(["users"], "There is a users table"),
+      check.table(["url_daily_stats", "daily_stats"], "Daily click totals have their own table"),
+      check.ref(["urls"], ["users"], "A URL can point to its owner"),
+      check.ref(["url_daily_stats", "daily_stats"], ["urls"], "Each daily total points to a URL"),
+      check.column(["urls"], /short_code/, "Each URL has a short code"),
+      check.column(["urls"], /original_url|long_url|destination/, "Each URL stores its destination"),
+      check.column(["url_daily_stats", "daily_stats"], /clicks|count/, "Daily statistics store a click count"),
+      check.everyTableHasPk(),
+    ],
+    solution: `Table users {
+  id bigint [pk]
+  email varchar [not null, unique]
+  created_at timestamptz [not null]
+}
+
+Table urls {
+  id bigint [pk]
+  short_code varchar(10) [not null, unique]
+  original_url text [not null]
+  user_id bigint [ref: > users.id, note: 'NULL for anonymous links']
+  created_at timestamptz [not null]
+  expires_at timestamptz
+}
+
+Table url_daily_stats {
+  url_id bigint [ref: > urls.id]
+  day date
+  clicks bigint [not null, default: 0]
+
+  indexes {
+    (url_id, day) [pk]
+  }
+}
+`,
+    explanation:
+      "urls.user_id is nullable because a visitor can create a link without signing in. short_code is UNIQUE, so Postgres creates a unique index that both prevents duplicate codes and makes redirect lookups fast. url_daily_stats uses a composite primary key (url_id, day): one link can have one total per day, but cannot accidentally get two rows for the same day. The foreign keys stop statistics referring to a URL that does not exist. In a production schema, consider an index on (user_id, created_at) for a user's link history and an expiry index or scheduled cleanup for old links.",
+  },
+
 ];
